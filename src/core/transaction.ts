@@ -56,9 +56,22 @@ const createTransaction = (deps: TransactionDependencies) => {
     logger.success('  - Staged changes to .pending.yml file.');
 
     // --- Execution Phase ---
-    logger.log('  - Applying file operations...');
-    await applyOperations(operations, cwd);
-    logger.success('  - File operations applied.');
+    try {
+      logger.log('  - Applying file operations...');
+      await applyOperations(operations, cwd);
+      logger.success('  - File operations applied.');
+    } catch (error) {
+      logger.error(`Failed to apply file operations: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
+      try {
+        await restoreSnapshot(snapshot, cwd);
+        logger.success('  - Files restored to original state.');
+        await deletePendingState(cwd, uuid);
+        logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
+      } catch (rollbackError) {
+        logger.error(`CRITICAL: Rollback after apply error failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+      }
+      return; // Abort transaction
+    }
 
     // --- Verification & Decision Phase ---
     let postCommandFailed = false;

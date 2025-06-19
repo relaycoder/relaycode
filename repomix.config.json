@@ -5,13 +5,14 @@
   "output": {
     "filePath": "docs/repomix-output.md",
     "style": "markdown",
-    "parsableStyle": false,
+    "parsableStyle": true,
     "fileSummary": false,
     "directoryStructure": true,
     "files": true,
     "removeComments": false,
     "removeEmptyLines": false,
-    "compress": true,
+    // "compress": true,
+    "compress": false,
     "topFilesLength":5,
     "showLineNumbers": false,
     "copyToClipboard": true,
@@ -20,7 +21,9 @@
       "sortByChangesMaxCommits": 100
     }
   },
-  "include": [],
+  "include": [
+       "test"
+  ],
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,
@@ -35,7 +38,7 @@
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
       "REQUIREMENT.md",
-      "test"
+      // "test"
     ]
   },
   "security": {

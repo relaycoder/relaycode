@@ -420,10 +420,7 @@ describe('e2e/transaction', () => {
         expect(committedFileExists).toBe(false);
     });
 
-    it('should fail transaction gracefully if a file is not writable', async () => {
-        // NOTE: This test verifies the current (buggy) behavior where a failed
-        // file operation leaves the system in an inconsistent state. A proper
-        // fix would involve rolling back on `applyOperations` failure.
+    it('should fail transaction gracefully if a file is not writable and rollback all changes', async () => {
         const config = await createTestConfig(testDir.path);
         const unwritableFile = 'src/unwritable.ts';
         const writableFile = 'src/writable.ts';
@@ -447,22 +444,61 @@ describe('e2e/transaction', () => {
             const parsedResponse = parseLLMResponse(response)!;
             await processPatch(config, parsedResponse, { cwd: testDir.path });
         
-            // Check file states: writable is changed, unwritable is not.
+            // Check file states: both should be rolled back to original content.
             const finalWritable = await fs.readFile(path.join(testDir.path, writableFile), 'utf-8');
-            expect(finalWritable).toBe("new writable content"); 
+            expect(finalWritable).toBe(originalWritableContent); 
 
             const finalUnwritable = await fs.readFile(unwritableFilePath, 'utf-8');
             expect(finalUnwritable).toBe(originalUnwritableContent);
         
-            // Check for orphaned pending file
+            // Check that pending and final state files were cleaned up/not created.
             const pendingStatePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.pending.yml`);
             const pendingFileExists = await fs.access(pendingStatePath).then(() => true).catch(() => false);
-            // This behavior is a bug: the pending file should be cleaned up after a rollback.
-            // The test currently asserts the buggy state.
-            expect(pendingFileExists).toBe(true);
+            expect(pendingFileExists).toBe(false);
+
+            const finalStatePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+            const finalStateExists = await fs.access(finalStatePath).then(() => true).catch(() => false);
+            expect(finalStateExists).toBe(false);
         } finally {
             // Ensure file is writable again so afterEach hook can clean up
             await fs.chmod(unwritableFilePath, 0o666);
+        }
+    });
+
+    it('should rollback gracefully if creating a file in a non-writable directory fails', async () => {
+        const config = await createTestConfig(testDir.path);
+        const readonlyDir = 'src/readonly-dir';
+        const newFilePath = path.join(readonlyDir, 'new-file.ts');
+        const readonlyDirPath = path.join(testDir.path, readonlyDir);
+    
+        await fs.mkdir(readonlyDirPath, { recursive: true });
+        await fs.chmod(readonlyDirPath, 0o555); // Read and execute only
+    
+        try {
+            const uuid = uuidv4();
+            const response = LLM_RESPONSE_START +
+                createFileBlock(newFilePath, 'this should not be written') +
+                LLM_RESPONSE_END(uuid, [{ new: newFilePath }]);
+            
+            const parsedResponse = parseLLMResponse(response)!;
+            await processPatch(config, parsedResponse, { cwd: testDir.path });
+    
+            // Check that the new file was not created
+            const newFileExists = await fs.access(path.join(testDir.path, newFilePath)).then(() => true).catch(() => false);
+            expect(newFileExists).toBe(false);
+    
+            // Check that the transaction was rolled back (no final .yml file)
+            const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+            const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+            expect(stateFileExists).toBe(false);
+            
+            // Check that pending state file was cleaned up
+            const pendingStatePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.pending.yml`);
+            const pendingFileExists = await fs.access(pendingStatePath).then(() => true).catch(() => false);
+            expect(pendingFileExists).toBe(false);
+    
+        } finally {
+            await fs.chmod(readonlyDirPath, 0o777); // Make writable again for cleanup
         }
     });
 });
