@@ -34,7 +34,7 @@
       "README.md",
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
-      "REQUIREMENT.md"
+      // "REQUIREMENT.md"
     ]
   },
   "security": {

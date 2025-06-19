@@ -48,8 +48,6 @@ const createTransaction = (deps: TransactionDependencies) => {
       await executeShellCommand(config.preCommand, cwd);
     }
     
-    const initialErrorCount = await getErrorCount(config.linter, cwd);
-
     const stateFile: StateFile = {
       uuid,
       projectId,

@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
-import { DELETE_FILE_MARKER } from '../utils/constants';
 
 export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
