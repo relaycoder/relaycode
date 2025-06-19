@@ -13,7 +13,7 @@ import {
 } from '../utils/constants';
 
 const CODE_BLOCK_REGEX = /```(?:\w+)?\s*\/\/\s*{(.*?)}\n([\s\S]*?)\n```/g;
-const YAML_BLOCK_REGEX = /```yaml\n([\s\S]+?)\n```$/;
+const YAML_BLOCK_REGEX = /```yaml\n([\s\S]+?)\n```\s*$/;
 
 const extractCodeBetweenMarkers = (content: string): string => {
     const startMarkerIndex = content.indexOf(CODE_BLOCK_START_MARKER);

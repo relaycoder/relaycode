@@ -4,8 +4,8 @@ import { promises as fs } from 'fs';
 import { Config, ConfigSchema } from '../types';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
 
-export const findConfig = async (): Promise<Config | null> => {
-  const configPath = path.join(process.cwd(), CONFIG_FILE_NAME);
+export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
+  const configPath = path.join(cwd, CONFIG_FILE_NAME);
   try {
     const fileContent = await fs.readFile(configPath, 'utf-8');
     const configJson = JSON.parse(fileContent);
@@ -21,7 +21,7 @@ export const findConfig = async (): Promise<Config | null> => {
   }
 };
 
-export const createConfig = async (projectId: string): Promise<Config> => {
+export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
     const config: Config = {
         projectId,
         clipboardPollInterval: 2000,
@@ -35,20 +35,20 @@ export const createConfig = async (projectId: string): Promise<Config> => {
     // Ensure the schema defaults are applied
     const validatedConfig = ConfigSchema.parse(config);
 
-    const configPath = path.join(process.cwd(), CONFIG_FILE_NAME);
+    const configPath = path.join(cwd, CONFIG_FILE_NAME);
     await fs.writeFile(configPath, JSON.stringify(validatedConfig, null, 2));
 
     return validatedConfig;
 };
 
-export const ensureStateDirExists = async (): Promise<void> => {
-    const stateDirPath = path.join(process.cwd(), STATE_DIRECTORY_NAME);
+export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
+    const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
     await fs.mkdir(stateDirPath, { recursive: true });
 };
 
-export const getProjectId = async (): Promise<string> => {
+export const getProjectId = async (cwd: string = process.cwd()): Promise<string> => {
     try {
-        const pkgJsonPath = path.join(process.cwd(), 'package.json');
+        const pkgJsonPath = path.join(cwd, 'package.json');
         const fileContent = await fs.readFile(pkgJsonPath, 'utf-8');
         const pkgJson = JSON.parse(fileContent);
         if (pkgJson.name && typeof pkgJson.name === 'string') {
@@ -57,5 +57,5 @@ export const getProjectId = async (): Promise<string> => {
     } catch (e) {
         // Ignore if package.json doesn't exist or is invalid
     }
-    return path.basename(process.cwd());
+    return path.basename(cwd);
 };

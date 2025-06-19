@@ -12,46 +12,33 @@ export interface TestDir {
 export const setupTestDirectory = async (): Promise<TestDir> => {
     const testDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-test-'));
 
-    const originalCwd = process.cwd();
-    process.chdir(testDirPath);
-
     const cleanup = async () => {
-        process.chdir(originalCwd);
         await fs.rm(testDirPath, { recursive: true, force: true });
     };
-
-    // Automatically cleanup on process exit/signals to avoid leftover files
-    const cleanupAndExit = async () => {
-        await cleanup();
-        process.exit();
-    };
-    process.on('exit', cleanup);
-    process.on('SIGINT', cleanupAndExit);
-    process.on('SIGTERM', cleanupAndExit);
-    process.on('uncaughtException', cleanupAndExit);
 
     return { path: testDirPath, cleanup };
 };
 
-export const createTestConfig = async (overrides: Partial<Config> = {}): Promise<Config> => {
+export const createTestConfig = async (cwd: string, overrides: Partial<Config> = {}): Promise<Config> => {
     const defaultConfig: Config = {
         projectId: 'test-project',
         clipboardPollInterval: 100,
         approval: 'yes',
         approvalOnErrorCount: 0,
-        linter: 'true', // A command that always succeeds
+        linter: `bun -e "process.exit(0)"`, // A command that always succeeds
         preCommand: '',
         postCommand: '',
     };
     const config = { ...defaultConfig, ...overrides };
-    await fs.writeFile(CONFIG_FILE_NAME, JSON.stringify(config, null, 2));
+    await fs.writeFile(path.join(cwd, CONFIG_FILE_NAME), JSON.stringify(config, null, 2));
     return config;
 };
 
-export const createTestFile = async (filePath: string, content: string): Promise<void> => {
-    const dir = path.dirname(filePath);
+export const createTestFile = async (cwd: string, filePath: string, content: string): Promise<void> => {
+    const absolutePath = path.resolve(cwd, filePath);
+    const dir = path.dirname(absolutePath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(filePath, content);
+    await fs.writeFile(absolutePath, content);
 };
 
 export const LLM_RESPONSE_START = `

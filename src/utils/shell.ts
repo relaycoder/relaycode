@@ -1,12 +1,13 @@
 import { ShellCommandResult } from '../types';
 
-export const executeShellCommand = async (command: string): Promise<ShellCommandResult> => {
+export const executeShellCommand = async (command: string, cwd?: string): Promise<ShellCommandResult> => {
   if (!command) {
     return { stdout: '', stderr: '', exitCode: 0 };
   }
   
   const parts = command.split(' ');
   const proc = Bun.spawn(parts, {
+    cwd: cwd || process.cwd(),
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -20,10 +21,10 @@ export const executeShellCommand = async (command: string): Promise<ShellCommand
   return { stdout, stderr, exitCode };
 };
 
-export const getErrorCount = async (linterCommand: string): Promise<number> => {
+export const getErrorCount = async (linterCommand: string, cwd?: string): Promise<number> => {
     if (!linterCommand) return 0;
     try {
-        const { stderr, stdout } = await executeShellCommand(linterCommand);
+        const { stderr, stdout } = await executeShellCommand(linterCommand, cwd);
         // A simple way to count errors. This could be made more sophisticated.
         // For `tsc --noEmit`, errors are usually on stderr.
         const output = stderr || stdout;

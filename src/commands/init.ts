@@ -49,8 +49,8 @@ Code changes rules 1-6:
 You are now ready to run 'relay watch' in your terminal.
 `;
 
-const updateGitignore = async (): Promise<void> => {
-    const gitignorePath = path.join(process.cwd(), GITIGNORE_FILE_NAME);
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
     const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
 
     try {
@@ -70,23 +70,23 @@ const updateGitignore = async (): Promise<void> => {
     }
 };
 
-export const initCommand = async (): Promise<void> => {
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
     logger.info('Initializing relaycode in this project...');
 
-    const existingConfig = await findConfig();
+    const existingConfig = await findConfig(cwd);
     if (existingConfig) {
         logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
         return;
     }
     
-    const projectId = await getProjectId();
-    await createConfig(projectId);
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
     logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
     
-    await ensureStateDirExists();
+    await ensureStateDirExists(cwd);
     logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
 
-    await updateGitignore();
+    await updateGitignore(cwd);
 
     logger.log(getSystemPrompt(projectId));
 };

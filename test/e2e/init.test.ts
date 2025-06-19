@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { initCommand } from '../../src/commands/init';
-import { setupTestDirectory, TestDir } from '../test.util';
+import { setupTestDirectory, TestDir, createTestFile } from '../test.util';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
 
 describe('e2e/init', () => {
@@ -21,7 +21,7 @@ describe('e2e/init', () => {
         const originalLog = console.log;
         console.log = () => {};
 
-        await initCommand();
+        await initCommand(testDir.path);
 
         console.log = originalLog; // Restore console output
 
@@ -50,12 +50,12 @@ describe('e2e/init', () => {
 
     it('should use package.json name for projectId if available', async () => {
         const pkgName = 'my-awesome-project';
-        await fs.writeFile('package.json', JSON.stringify({ name: pkgName }));
+        await createTestFile(testDir.path, 'package.json', JSON.stringify({ name: pkgName }));
 
         const originalLog = console.log;
         console.log = () => {};
         
-        await initCommand();
+        await initCommand(testDir.path);
 
         console.log = originalLog;
 
@@ -67,16 +67,16 @@ describe('e2e/init', () => {
 
     it('should append to existing .gitignore', async () => {
         const initialContent = '# Existing rules\nnode_modules/';
-        await fs.writeFile(GITIGNORE_FILE_NAME, initialContent);
+        await createTestFile(testDir.path, GITIGNORE_FILE_NAME, initialContent);
 
         const originalLog = console.log;
         console.log = () => {};
 
-        await initCommand();
+        await initCommand(testDir.path);
 
         console.log = originalLog;
 
-        const gitignoreContent = await fs.readFile(GITIGNORE_FILE_NAME, 'utf-8');
+        const gitignoreContent = await fs.readFile(path.join(testDir.path, GITIGNORE_FILE_NAME), 'utf-8');
         expect(gitignoreContent).toContain(initialContent);
         expect(gitignoreContent).toContain(`/${STATE_DIRECTORY_NAME}/`);
     });
@@ -84,32 +84,32 @@ describe('e2e/init', () => {
     it('should not add entry to .gitignore if it already exists', async () => {
         const entry = `/${STATE_DIRECTORY_NAME}/`;
         const initialContent = `# Existing rules\n${entry}`;
-        await fs.writeFile(GITIGNORE_FILE_NAME, initialContent);
+        await createTestFile(testDir.path, GITIGNORE_FILE_NAME, initialContent);
 
         const originalLog = console.log;
         console.log = () => {};
 
-        await initCommand();
+        await initCommand(testDir.path);
 
         console.log = originalLog;
 
-        const gitignoreContent = await fs.readFile(GITIGNORE_FILE_NAME, 'utf-8');
+        const gitignoreContent = await fs.readFile(path.join(testDir.path, GITIGNORE_FILE_NAME), 'utf-8');
         const occurrences = (gitignoreContent.match(new RegExp(entry, 'g')) || []).length;
         expect(occurrences).toBe(1);
     });
 
     it('should not overwrite an existing relaycode.config.json', async () => {
         const customConfig = { projectId: 'custom', customField: true };
-        await fs.writeFile(CONFIG_FILE_NAME, JSON.stringify(customConfig));
+        await createTestFile(testDir.path, CONFIG_FILE_NAME, JSON.stringify(customConfig));
 
         const originalLog = console.log;
         console.log = () => {};
 
-        await initCommand();
+        await initCommand(testDir.path);
 
         console.log = originalLog;
 
-        const configContent = await fs.readFile(CONFIG_FILE_NAME, 'utf-8');
+        const configContent = await fs.readFile(path.join(testDir.path, CONFIG_FILE_NAME), 'utf-8');
         const config = JSON.parse(configContent);
         expect(config.projectId).toBe('custom');
         expect(config.customField).toBe(true);

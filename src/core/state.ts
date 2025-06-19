@@ -4,14 +4,16 @@ import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 
-const getStateFilePath = (uuid: string, isPending: boolean): string => {
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
   const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
-  return path.join(process.cwd(), STATE_DIRECTORY_NAME, fileName);
+  return path.join(getStateDirectory(cwd), fileName);
 };
 
-export const hasBeenProcessed = async (uuid: string): Promise<boolean> => {
-  const pendingPath = getStateFilePath(uuid, true);
-  const committedPath = getStateFilePath(uuid, false);
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
   try {
     await fs.access(pendingPath);
     return true;
@@ -26,21 +28,22 @@ export const hasBeenProcessed = async (uuid: string): Promise<boolean> => {
   }
 };
 
-export const writePendingState = async (state: StateFile): Promise<void> => {
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
   const validatedState = StateFileSchema.parse(state);
   const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(state.uuid, true);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  await fs.mkdir(getStateDirectory(cwd), { recursive: true });
   await fs.writeFile(filePath, yamlString, 'utf-8');
 };
 
-export const commitState = async (uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(uuid, true);
-  const committedPath = getStateFilePath(uuid, false);
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
   await fs.rename(pendingPath, committedPath);
 };
 
-export const deletePendingState = async (uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(uuid, true);
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
   try {
     await fs.unlink(pendingPath);
   } catch (error) {

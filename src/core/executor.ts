@@ -1,10 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
+import { DELETE_FILE_MARKER } from '../utils/constants';
 
-export const readFileContent = async (filePath: string): Promise<string | null> => {
+export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
-    return await fs.readFile(path.join(process.cwd(), filePath), 'utf-8');
+    return await fs.readFile(path.resolve(cwd, filePath), 'utf-8');
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return null; // File doesn't exist
@@ -13,15 +14,15 @@ export const readFileContent = async (filePath: string): Promise<string | null> 
   }
 };
 
-export const writeFileContent = async (filePath: string, content: string): Promise<void> => {
-  const absolutePath = path.join(process.cwd(), filePath);
+export const writeFileContent = async (filePath: string, content: string, cwd: string = process.cwd()): Promise<void> => {
+  const absolutePath = path.resolve(cwd, filePath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, content, 'utf-8');
 };
 
-export const deleteFile = async (filePath: string): Promise<void> => {
+export const deleteFile = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
   try {
-    await fs.unlink(path.join(process.cwd(), filePath));
+    await fs.unlink(path.resolve(cwd, filePath));
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       // File already deleted, which is fine.
@@ -31,33 +32,66 @@ export const deleteFile = async (filePath: string): Promise<void> => {
   }
 };
 
-export const createSnapshot = async (filePaths: string[]): Promise<FileSnapshot> => {
+export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
   const snapshot: FileSnapshot = {};
-  const uniquePaths = [...new Set(filePaths)];
-  for (const filePath of uniquePaths) {
-    snapshot[filePath] = await readFileContent(filePath);
+  for (const filePath of filePaths) {
+    try {
+      const absolutePath = path.resolve(cwd, filePath);
+      try {
+        const content = await fs.readFile(absolutePath, 'utf-8');
+        snapshot[filePath] = content;
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          snapshot[filePath] = null; // File doesn't exist, which is fine.
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error(`Error creating snapshot for ${filePath}:`, error);
+      throw error;
+    }
   }
   return snapshot;
 };
 
-export const applyOperations = async (operations: FileOperation[]): Promise<void> => {
+export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
   for (const op of operations) {
-    if (op.type === 'write') {
-      await writeFileContent(op.path, op.content);
-    } else if (op.type === 'delete') {
-      await deleteFile(op.path);
+    if (op.type === 'delete') {
+      await deleteFile(op.path, cwd);
+    } else { // op.type === 'write'
+      await writeFileContent(op.path, op.content, cwd);
     }
   }
 };
 
-export const restoreSnapshot = async (snapshot: FileSnapshot): Promise<void> => {
+export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = process.cwd()): Promise<void> => {
+  // Process each file in the snapshot
   for (const [filePath, content] of Object.entries(snapshot)) {
-    if (content === null) {
-      // File didn't exist before, so delete it.
-      await deleteFile(filePath);
-    } else {
-      // File existed, so restore its content.
-      await writeFileContent(filePath, content);
+    const fullPath = path.resolve(cwd, filePath);
+    try {
+      if (content === null) {
+        // If the file didn't exist in the snapshot, make sure it doesn't exist after restore
+        try {
+          await fs.unlink(fullPath);
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            // File already doesn't exist, which is fine
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        // Create directory structure if needed
+        const dir = path.dirname(fullPath);
+        await fs.mkdir(dir, { recursive: true });
+        
+        // Write the original content back to the file
+        await fs.writeFile(fullPath, content, 'utf-8');
+      }
+    } catch (error) {
+      console.error(`Failed to restore ${filePath}:`, error);
+      throw error;
     }
   }
 };
