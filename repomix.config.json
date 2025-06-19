@@ -14,7 +14,7 @@
     "compress": false,
     "topFilesLength": 5,
     "showLineNumbers": false,
-    "copyToClipboard": false,
+    "copyToClipboard": true,
     "git": {
       "sortByChanges": true,
       "sortByChangesMaxCommits": 100
@@ -24,7 +24,18 @@
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,
-    "customPatterns": []
+    "customPatterns": [
+      ".cursor",
+      "docs",
+      "node_modules",
+      ".gitignore",
+      ".repomixignore", 
+      "bun.lock",
+      "README.md",
+      "repomix.config.json",
+      "tsconfig.tsbuildinfo",
+      "REQUIREMENT.md"
+    ]
   },
   "security": {
     "enableSecurityCheck": true

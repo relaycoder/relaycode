@@ -104,3 +104,8 @@ so the user doesnt need to write md file.
 - HOF
 - immutability
 - no any/unknown type.
+
+
+_____________________________________________
+
+which are from below requirement has not met?

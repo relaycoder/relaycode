@@ -35,9 +35,17 @@ const createTransaction = (deps: TransactionDependencies) => {
     logger.info(`🚀 Starting transaction for patch ${uuid}...`);
     logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
     
+    // --- Staging Phase ---
     logger.log('  - Taking snapshot of affected files...');
     const snapshot = await createSnapshot(affectedFilePaths);
     
+    if(config.preCommand) {
+      logger.log(`  - Running pre-command: ${config.preCommand}`);
+      await executeShellCommand(config.preCommand);
+    }
+    
+    await getErrorCount(config.linter); // Run initial check, primarily for logging.
+
     const stateFile: StateFile = {
       uuid,
       projectId,
@@ -50,26 +58,30 @@ const createTransaction = (deps: TransactionDependencies) => {
     await writePendingState(stateFile);
     logger.success('  - Staged changes to .pending.yml file.');
 
-    if(config.preCommand) await executeShellCommand(config.preCommand);
-    const initialErrorCount = await getErrorCount(config.linter);
-    logger.log(`  - Initial linter error count: ${initialErrorCount}`);
-    
+    // --- Execution Phase ---
     logger.log('  - Applying file operations...');
     await applyOperations(operations);
     logger.success('  - File operations applied.');
 
-    if(config.postCommand) await executeShellCommand(config.postCommand);
+    // --- Verification & Decision Phase ---
+    if(config.postCommand) {
+      logger.log(`  - Running post-command: ${config.postCommand}`);
+      await executeShellCommand(config.postCommand);
+    }
     const finalErrorCount = await getErrorCount(config.linter);
     logger.log(`  - Final linter error count: ${finalErrorCount}`);
 
-    let isApproved = config.approval === 'no' || finalErrorCount <= config.approvalOnErrorCount;
+    let isApproved = false;
+    const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
 
-    if (!isApproved) {
-        isApproved = await getConfirmation('Changes applied. Do you want to approve and commit them? (y/N)');
-    } else {
+    if (canAutoApprove) {
+        isApproved = true;
         logger.success('  - Changes automatically approved based on your configuration.');
+    } else {
+        isApproved = await getConfirmation('Changes applied. Do you want to approve and commit them? (y/N)');
     }
     
+    // --- Commit/Rollback Phase ---
     if (isApproved) {
         logger.log('  - Committing changes...');
         const finalState: StateFile = { ...stateFile, approved: true };
@@ -93,7 +105,7 @@ const createTransaction = (deps: TransactionDependencies) => {
       } catch (error) {
         logger.error(`Transaction ${uuid} failed: ${error instanceof Error ? error.message : String(error)}`);
         logger.warn('Attempting to roll back from snapshot...');
-        const snapshot = await createSnapshot(affectedFilePaths);
+        const snapshot = await createSnapshot(affectedFilePaths); // Re-create snapshot just in case it failed before writing
         await restoreSnapshot(snapshot);
         await deletePendingState(uuid);
         logger.success('Rollback attempted.');
