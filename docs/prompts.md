@@ -93,3 +93,14 @@ so the user doesnt need to write md file.
 
 
  I want the program keep ongoing . I also want the .relaycode files in yaml format along with  snapshots and {your step reasoning}, with readable summary at beginning of files. no daemon please
+
+
+ ________________________________________________
+
+
+ create the relaycode project using above requirements by following Code changes rules 887 and
+- use bun.sh
+- e2e type safety
+- HOF
+- immutability
+- no any/unknown type.
