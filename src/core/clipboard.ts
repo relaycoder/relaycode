@@ -22,7 +22,7 @@ export const createClipboardWatcher = (
     } catch (error) {
       // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
       // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard:', error instanceof Error ? error.message : String(error));
+      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 

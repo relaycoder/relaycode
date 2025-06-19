@@ -16,7 +16,7 @@ export const watchCommand = async (): Promise<void> => {
   
   logger.success('Configuration loaded. Starting relaycode watch...');
 
-  const watcher = createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
     logger.info('New clipboard content detected. Attempting to parse...');
     const parsedResponse = parseLLMResponse(content);
 
@@ -30,6 +30,4 @@ export const watchCommand = async (): Promise<void> => {
     logger.info('--------------------------------------------------');
     logger.info('Watching for next patch...');
   });
-
-  watcher.start();
 };

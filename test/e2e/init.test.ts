@@ -135,7 +135,7 @@ describe('e2e/init', () => {
         console.log = originalLog; // Restore
 
         const outputString = capturedOutput.join('\n');
-        expect(outputString).toContain('Your project ID is: my-prompt-project');
-        expect(outputString).toContain('--- SYSTEM PROMPT ---');
+        expect(outputString).toContain(`projectId: ${pkgName}`);
+        expect(outputString).toContain('Code changes rules 1-6:');
     });
 });

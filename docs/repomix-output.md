@@ -1959,13 +1959,13 @@ describe('e2e/transaction', () => {
 
 ## File: src/core/transaction.ts
 ````typescript
+// src/core/transaction.ts
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot } from '../types';
 import { logger } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
-import { createSnapshot, applyOperations, restoreSnapshot } from './executor';
+import { createSnapshot, writeFileContent, deleteFile, restoreSnapshot } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
-import path from 'path';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -1974,6 +1974,43 @@ type TransactionDependencies = {
   parsedResponse: ParsedLLMResponse;
   prompter?: Prompter;
   cwd: string;
+};
+
+type LineChanges = {
+    added: number;
+    removed: number;
+};
+
+// A simple LCS-based diff to calculate line changes.
+const calculateLineChanges = (oldContent: string | null, newContent: string): LineChanges => {
+    if (oldContent === newContent) return { added: 0, removed: 0 };
+
+    const oldLines = oldContent ? oldContent.split('\n') : [];
+    const newLines = newContent ? newContent.split('\n') : [];
+
+    if (oldContent === null || oldContent === '') return { added: newLines.length, removed: 0 };
+    if (newContent === '') return { added: 0, removed: oldLines.length };
+
+    const oldLen = oldLines.length;
+    const newLen = newLines.length;
+    
+    const lcs = Array(oldLen + 1).fill(null).map(() => Array(newLen + 1).fill(0));
+
+    for (let i = 1; i <= oldLen; i++) {
+        for (let j = 1; j <= newLen; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                lcs[i][j] = lcs[i - 1][j - 1] + 1;
+            } else {
+                lcs[i][j] = Math.max(lcs[i - 1][j], lcs[i][j - 1]);
+            }
+        }
+    }
+
+    const commonLines = lcs[oldLen][newLen];
+    return {
+        added: newLen - commonLines,
+        removed: oldLen - commonLines,
+    };
 };
 
 // This HOF encapsulates the logic for processing a single patch.
@@ -1997,11 +2034,10 @@ const createTransaction = (deps: TransactionDependencies) => {
     return true;
   };
   
-  const execute = async (snapshot: FileSnapshot): Promise<void> => {
+  const execute = async (snapshot: FileSnapshot, startTime: number): Promise<void> => {
     logger.info(`🚀 Starting transaction for patch ${uuid}...`);
     logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
     
-    // Log the snapshot for debugging
     logger.log(`  - Snapshot of ${Object.keys(snapshot).length} files taken.`);
     
     const stateFile: StateFile = {
@@ -2017,10 +2053,31 @@ const createTransaction = (deps: TransactionDependencies) => {
     logger.success('  - Staged changes to .pending.yml file.');
 
     // --- Execution Phase ---
+    const opStats: Array<{ type: 'Written' | 'Deleted', path: string, added: number, removed: number }> = [];
+    
     try {
       logger.log('  - Applying file operations...');
-      await applyOperations(operations, cwd);
-      logger.success('  - File operations applied.');
+      for (const op of operations) {
+        if (op.type === 'write') {
+            const oldContent = snapshot[op.path];
+            await writeFileContent(op.path, op.content, cwd);
+            const { added, removed } = calculateLineChanges(oldContent, op.content);
+            opStats.push({ type: 'Written', path: op.path, added, removed });
+        } else { // op.type === 'delete'
+            const oldContent = snapshot[op.path];
+            await deleteFile(op.path, cwd);
+            const { added, removed } = calculateLineChanges(oldContent, '');
+            opStats.push({ type: 'Deleted', path: op.path, added, removed });
+        }
+      }
+      logger.success('File operations complete.');
+      opStats.forEach(stat => {
+        if (stat.type === 'Written') {
+          logger.success(`✔ Written: ${stat.path} (+${stat.added}, -${stat.removed})`);
+        } else {
+          logger.success(`✔ Deleted: ${stat.path}`);
+        }
+      });
     } catch (error) {
       logger.error(`Failed to apply file operations: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
       try {
@@ -2068,6 +2125,18 @@ const createTransaction = (deps: TransactionDependencies) => {
         const finalState: StateFile = { ...stateFile, approved: true };
         await writePendingState(cwd, finalState); 
         await commitState(cwd, uuid);
+
+        const duration = performance.now() - startTime;
+        const totalSucceeded = opStats.length;
+        const totalFailed = operations.length - totalSucceeded;
+        const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
+        const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
+        
+        logger.log('\nSummary:');
+        logger.log(`Attempted: ${operations.length} file(s) (${totalSucceeded} succeeded, ${totalFailed} failed)`);
+        logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
+        logger.log(`Completed in ${duration.toFixed(2)}ms`);
+
         logger.success(`✅ Transaction ${uuid} committed successfully!`);
     } else {
         logger.warn('  - Rolling back changes...');
@@ -2098,12 +2167,14 @@ const createTransaction = (deps: TransactionDependencies) => {
         }
       }
 
+      const startTime = performance.now();
+
       try {
         // Take a snapshot before applying any changes
         logger.log(`Taking snapshot of files that will be affected...`);
         const snapshot = await createSnapshot(affectedFilePaths, cwd);
         
-        await execute(snapshot);
+        await execute(snapshot, startTime);
       } catch (error) {
         logger.error(`Transaction ${uuid} failed: ${error instanceof Error ? error.message : String(error)}`);
       }

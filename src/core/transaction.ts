@@ -38,14 +38,14 @@ const calculateLineChanges = (oldContent: string | null, newContent: string): Li
     for (let i = 1; i <= oldLen; i++) {
         for (let j = 1; j <= newLen; j++) {
             if (oldLines[i - 1] === newLines[j - 1]) {
-                lcs[i][j] = lcs[i - 1][j - 1] + 1;
+                lcs[i]![j] = lcs[i - 1]![j - 1] + 1;
             } else {
-                lcs[i][j] = Math.max(lcs[i - 1][j], lcs[i][j - 1]);
+                lcs[i]![j] = Math.max(lcs[i - 1]![j], lcs[i]![j - 1]);
             }
         }
     }
 
-    const commonLines = lcs[oldLen][newLen];
+    const commonLines = lcs[oldLen]![newLen];
     return {
         added: newLen - commonLines,
         removed: oldLen - commonLines,
@@ -100,12 +100,12 @@ const createTransaction = (deps: TransactionDependencies) => {
         if (op.type === 'write') {
             const oldContent = snapshot[op.path];
             await writeFileContent(op.path, op.content, cwd);
-            const { added, removed } = calculateLineChanges(oldContent, op.content);
+            const { added, removed } = calculateLineChanges(oldContent ?? null, op.content);
             opStats.push({ type: 'Written', path: op.path, added, removed });
         } else { // op.type === 'delete'
             const oldContent = snapshot[op.path];
             await deleteFile(op.path, cwd);
-            const { added, removed } = calculateLineChanges(oldContent, '');
+            const { added, removed } = calculateLineChanges(oldContent ?? null, '');
             opStats.push({ type: 'Deleted', path: op.path, added, removed });
         }
       }
@@ -122,11 +122,11 @@ const createTransaction = (deps: TransactionDependencies) => {
       try {
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
-        await deletePendingState(cwd, uuid);
-        logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
       } catch (rollbackError) {
         logger.error(`CRITICAL: Rollback after apply error failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
       }
+      await deletePendingState(cwd, uuid);
+      logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
       return; // Abort transaction
     }
 

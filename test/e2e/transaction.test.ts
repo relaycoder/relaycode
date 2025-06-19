@@ -26,9 +26,10 @@ describe('e2e/transaction', () => {
     beforeEach(async () => {
         testDir = await setupTestDirectory();
         await createTestFile(testDir.path, testFile, originalContent);
-        // A tsconfig is needed for `bun tsc` to run
+        // A tsconfig is needed for `bun tsc` to run and find files
         await createTestFile(testDir.path, 'tsconfig.json', JSON.stringify({
-            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true }
+            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true },
+            "include": ["src/**/*.ts"]
         }));
     });
 
@@ -271,7 +272,7 @@ describe('e2e/transaction', () => {
         \`\`\`
         `;
         
-        const parsedResponse = parseLLMResponse(responseWithWrongProject);
+        const parsedResponse = parseLLMResponse(responseWithWrongProject.trim());
         expect(parsedResponse).not.toBeNull();
         
         await processPatch(config, parsedResponse!, { cwd: testDir.path });
@@ -391,8 +392,8 @@ describe('e2e/transaction', () => {
         const postCommandFile = path.join(testDir.path, 'post.txt');
     
         const config = await createTestConfig(testDir.path, {
-            preCommand: `touch ${preCommandFile}`,
-            postCommand: `touch ${postCommandFile}`,
+            preCommand: `bun -e "require('fs').writeFileSync('pre.txt', '')"`,
+            postCommand: `bun -e "require('fs').writeFileSync('post.txt', '')"`,
         });
     
         const uuid = uuidv4();
