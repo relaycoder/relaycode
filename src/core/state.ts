@@ -12,15 +12,10 @@ const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string
 };
 
 export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
   const committedPath = getStateFilePath(cwd, uuid, false);
   try {
-    await fs.access(pendingPath);
-    return true;
-  } catch (e) {
-    // pending doesn't exist, check committed
-  }
-  try {
+    // Only check for a committed state file.
+    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
     await fs.access(committedPath);
     return true;
   } catch (e) {

@@ -43,11 +43,6 @@ const createTransaction = (deps: TransactionDependencies) => {
     // Log the snapshot for debugging
     logger.log(`  - Snapshot of ${Object.keys(snapshot).length} files taken.`);
     
-    if(config.preCommand) {
-      logger.log(`  - Running pre-command: ${config.preCommand}`);
-      await executeShellCommand(config.preCommand, cwd);
-    }
-    
     const stateFile: StateFile = {
       uuid,
       projectId,
@@ -66,21 +61,31 @@ const createTransaction = (deps: TransactionDependencies) => {
     logger.success('  - File operations applied.');
 
     // --- Verification & Decision Phase ---
-    if(config.postCommand) {
+    let postCommandFailed = false;
+    if (config.postCommand) {
       logger.log(`  - Running post-command: ${config.postCommand}`);
-      await executeShellCommand(config.postCommand, cwd);
+      const postResult = await executeShellCommand(config.postCommand, cwd);
+      if (postResult.exitCode !== 0) {
+        logger.error(`Post-command failed with exit code ${postResult.exitCode}, forcing rollback.`);
+        if (postResult.stderr) logger.error(`Stderr: ${postResult.stderr}`);
+        postCommandFailed = true;
+      }
     }
+
     const finalErrorCount = await getErrorCount(config.linter, cwd);
     logger.log(`  - Final linter error count: ${finalErrorCount}`);
 
     let isApproved = false;
-    const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
-
-    if (canAutoApprove) {
-        isApproved = true;
-        logger.success('  - Changes automatically approved based on your configuration.');
+    if (postCommandFailed) {
+      isApproved = false; // Force rollback
     } else {
-        isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+      const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
+      if (canAutoApprove) {
+          isApproved = true;
+          logger.success('  - Changes automatically approved based on your configuration.');
+      } else {
+          isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+      }
     }
     
     // --- Commit/Rollback Phase ---
@@ -93,33 +98,11 @@ const createTransaction = (deps: TransactionDependencies) => {
     } else {
         logger.warn('  - Rolling back changes...');
         
-        // Debug log for each file in the snapshot
-        for (const [filePath, content] of Object.entries(snapshot)) {
-            logger.log(`    - Restoring ${filePath} to ${content === null ? 'non-existence' : 'original content'}`);
-        }
-        
         try {
             await restoreSnapshot(snapshot, cwd);
             logger.success('  - Files restored to original state.');
             await deletePendingState(cwd, uuid);
             logger.success(`↩️ Transaction ${uuid} rolled back.`);
-            
-            // Verify files were properly restored
-            for (const filePath of affectedFilePaths) {
-                const originalContent = snapshot[filePath];
-                const fullPath = path.resolve(cwd, filePath);
-                
-                try {
-                    const currentContent = await Bun.file(fullPath).text();
-                    if (originalContent !== null && currentContent !== originalContent) {
-                        logger.warn(`    - Failed to restore ${filePath} to original content`);
-                    }
-                } catch (err) {
-                    if (originalContent !== null) {
-                        logger.warn(`    - Failed to verify restored content for ${filePath}`);
-                    }
-                }
-            }
         } catch (error) {
             logger.error(`Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
@@ -130,6 +113,16 @@ const createTransaction = (deps: TransactionDependencies) => {
   return {
     run: async () => {
       if (!(await validate())) return;
+
+      if (config.preCommand) {
+        logger.log(`  - Running pre-command: ${config.preCommand}`);
+        const { exitCode, stderr } = await executeShellCommand(config.preCommand, cwd);
+        if (exitCode !== 0) {
+          logger.error(`Pre-command failed with exit code ${exitCode}, aborting transaction.`);
+          if (stderr) logger.error(`Stderr: ${stderr}`);
+          return;
+        }
+      }
 
       try {
         // Take a snapshot before applying any changes

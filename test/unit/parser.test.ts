@@ -109,6 +109,34 @@ projectId: test-project
             expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: content3 });
             expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
         });
+        
+        it('should handle file paths with spaces', () => {
+            const filePath = 'src/components/a file with spaces.tsx';
+            const content = '<button>Click Me</button>';
+            const response = createFileBlock(filePath, content) + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
+            const parsed = parseLLMResponse(response);
+            expect(parsed?.operations[0].path).toBe(filePath);
+        });
+
+        it('should handle empty content in a write operation', () => {
+            const filePath = 'src/empty.ts';
+            const response = createFileBlock(filePath, '') + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
+            const parsed = parseLLMResponse(response);
+            expect(parsed?.operations[0].type).toBe('write');
+            if (parsed?.operations[0].type === 'write') {
+                expect(parsed.operations[0].content).toBe('');
+            }
+        });
+
+        it('should ignore malformed code blocks', () => {
+            const response = `
+\`\`\`typescript // {malformed-path.ts
+const a = 1;
+\`\`\`
+${LLM_RESPONSE_END(testUuid, [])}
+            `;
+            expect(parseLLMResponse(response)).toBeNull();
+        });
 
         it('should correctly extract content even if START/END markers are missing', () => {
             const filePath = 'src/simple.ts';

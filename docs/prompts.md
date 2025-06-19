@@ -121,3 +121,71 @@ ________________________________________________
 7. Do not create any new file for helper,script etc. just do what prompted.
 8. test files should only be located outside src at test/unit or test/e2e
 9. test should use/modify test/test.util.ts for reusability
+
+
+______________________________________________
+
+add more tests to cover below
+
+Based on the requirements for `relaycode`, here is a comprehensive list of test items that should be covered.
+
+### `relay --init` Command Tests
+- Should create `relaycode.config.json` with correct default values.
+- Should correctly detect `projectId` from `package.json`.
+- Should fall back to directory name for `projectId` if `package.json` is not found.
+- Should create the `.relaycode` state directory.
+- Should create a `.gitignore` file and add `.relaycode/` if one doesn't exist.
+- Should append `.relaycode/` to an existing `.gitignore` file.
+- Should not add a duplicate `.relaycode/` entry to `.gitignore`.
+- Should output the correct system prompt instructions, including the detected `projectId`.
+
+### `relay watch` Core Workflow Tests
+- Should detect and process a valid patch from the clipboard.
+- Should ignore clipboard content that does not contain a valid patch format.
+- Should ignore patches with a non-matching `projectId`.
+- Should ignore patches with a duplicate `uuid` that has already been processed.
+- Should correctly create new files as specified.
+- Should correctly modify existing files.
+- Should correctly delete files.
+- Should automatically create necessary parent directories for new files.
+- Should store reasoning, operations, and snapshot in the final state `.yml` file.
+
+### Transactional and Rollback Tests
+- Should create a `.pending.yml` file during the staging phase.
+- Should successfully rename `.pending.yml` to `.yml` upon successful approval.
+- Should restore all modified files to their original state on user rejection.
+- Should delete any newly created files on user rejection.
+- Should clean up newly created empty directories on user rejection.
+- Should not delete directories that contained other files prior to the transaction.
+- Should delete the `.pending.yml` file after a successful rollback.
+- Should trigger a rollback if the `linter` fails and manual approval is denied.
+- Should trigger a rollback if a `postCommand` fails.
+
+### Configuration (`relaycode.config.json`) Tests
+- Should auto-approve a change when `approval` is "yes" and linter conditions are met.
+- Should always require manual approval when `approval` is "no".
+- Should auto-approve if linter errors do not exceed `approvalOnErrorCount`.
+- Should require manual approval if linter errors exceed `approvalOnErrorCount`.
+- Should correctly execute `preCommand` before taking a snapshot or applying changes.
+- A failing `preCommand` should abort the transaction before any files are touched.
+- Should correctly execute `postCommand` after applying changes but before final commit.
+- Should skip linter checks if the `linter` command is an empty string.
+
+### Parser and Data Processing Tests
+- Should correctly extract code content between `// START` and `// END` markers.
+- Should strip `// {filePath}`, `// START`, and `// END` markers from the final file content.
+- Should correctly identify the `//TODO: delete this file` directive for deletion operations.
+- Should collect all text outside of code blocks and the final YAML block as `reasoning`.
+- Should correctly parse `projectId`, `uuid`, and `changeSummary` from the final YAML block.
+- Should handle file paths with spaces, dots, and special characters.
+- Should handle empty content within a code block.
+- Should gracefully ignore malformed code blocks (e.g., missing markers).
+- Should gracefully ignore malformed or missing final YAML block.
+
+### Error Handling and Crash Safety Tests
+- Should handle filesystem permission errors during file write or directory creation.
+- Should continue watching after encountering and rejecting an invalid patch.
+- On startup, should ignore any orphaned `.pending.yml` files from a previous crashed session.
+
+
+____________________________________________________

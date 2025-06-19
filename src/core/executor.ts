@@ -65,7 +65,8 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
 };
 
 export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = process.cwd()): Promise<void> => {
-  // Process each file in the snapshot
+  const projectRoot = path.resolve(cwd);
+
   for (const [filePath, content] of Object.entries(snapshot)) {
     const fullPath = path.resolve(cwd, filePath);
     try {
@@ -73,9 +74,21 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
         // If the file didn't exist in the snapshot, make sure it doesn't exist after restore
         try {
           await fs.unlink(fullPath);
+          // After deleting a file that was newly created, try to clean up empty parent directories.
+          let parentDir = path.dirname(fullPath);
+          // Keep traversing up until we hit the project root or a non-empty directory
+          while (parentDir.startsWith(projectRoot) && parentDir !== projectRoot) {
+            const files = await fs.readdir(parentDir);
+            if (files.length === 0) {
+              await fs.rmdir(parentDir);
+              parentDir = path.dirname(parentDir);
+            } else {
+              break; // Stop if directory is not empty
+            }
+          }
         } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            // File already doesn't exist, which is fine
+          if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+            // File or directory already doesn't exist, which is fine
           } else {
             throw error;
           }

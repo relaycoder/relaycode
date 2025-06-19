@@ -4,6 +4,7 @@ import path from 'path';
 import { initCommand } from '../../src/commands/init';
 import { setupTestDirectory, TestDir, createTestFile } from '../test.util';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
+import { ConfigSchema } from '../../src/types';
 
 describe('e2e/init', () => {
     let testDir: TestDir;
@@ -16,7 +17,7 @@ describe('e2e/init', () => {
         await testDir.cleanup();
     });
 
-    it('should create config file, state directory, and .gitignore', async () => {
+    it('should create config file with correct defaults, state directory, and .gitignore', async () => {
         // Suppress console output for this test
         const originalLog = console.log;
         console.log = () => {};
@@ -32,7 +33,13 @@ describe('e2e/init', () => {
 
         const configContent = await fs.readFile(configPath, 'utf-8');
         const config = JSON.parse(configContent);
-        expect(config.projectId).toBe(path.basename(testDir.path));
+        
+        // Validate against schema to check defaults
+        const parsedConfig = ConfigSchema.parse(config);
+        expect(parsedConfig.projectId).toBe(path.basename(testDir.path));
+        expect(parsedConfig.clipboardPollInterval).toBe(2000);
+        expect(parsedConfig.approval).toBe('yes');
+        expect(parsedConfig.linter).toBe('bun tsc --noEmit');
 
         // Check for state directory
         const stateDirPath = path.join(testDir.path, STATE_DIRECTORY_NAME);
