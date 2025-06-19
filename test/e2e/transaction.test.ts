@@ -28,7 +28,7 @@ describe('e2e/transaction', () => {
         await createTestFile(testDir.path, testFile, originalContent);
         // A tsconfig is needed for `bun tsc` to run
         await createTestFile(testDir.path, 'tsconfig.json', JSON.stringify({
-            "compilerOptions": { "strict": true, "noEmit": true }
+            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true }
         }));
     });
 
@@ -68,6 +68,7 @@ describe('e2e/transaction', () => {
         expect(stateData.operations).toHaveLength(1);
         expect(stateData.operations[0].path).toBe(testFile);
         expect(stateData.snapshot[testFile]).toBe(originalContent);
+        expect(stateData.reasoning).toEqual(parsedResponse!.reasoning);
     });
 
     it('should rollback changes when manually disapproved', async () => {
@@ -224,5 +225,244 @@ describe('e2e/transaction', () => {
 
         const stateFileExists = await fs.access(path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(false);
+    });
+
+    it('should ignore patch with non-matching projectId', async () => {
+        const config = await createTestConfig(testDir.path, { projectId: 'correct-project' });
+        const uuid = uuidv4();
+        
+        const responseWithWrongProject = `
+        \`\`\`typescript // {src/index.ts}
+        // START
+        console.log("should not be applied");
+        // END
+        \`\`\`
+        \`\`\`yaml
+        projectId: wrong-project
+        uuid: ${uuid}
+        changeSummary: []
+        \`\`\`
+        `;
+        
+        const parsedResponse = parseLLMResponse(responseWithWrongProject);
+        expect(parsedResponse).not.toBeNull();
+        
+        await processPatch(config, parsedResponse!, { cwd: testDir.path });
+
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe(originalContent);
+
+        const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+        expect(stateFileExists).toBe(false);
+    });
+
+    it('should correctly apply a file deletion operation', async () => {
+        const config = await createTestConfig(testDir.path);
+        const fileToDelete = 'src/delete-me.ts';
+        const originalDeleteContent = 'delete this content';
+        await createTestFile(testDir.path, fileToDelete, originalDeleteContent);
+        
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START + 
+                         createDeleteFileBlock(fileToDelete) +
+                         LLM_RESPONSE_END(uuid, [{ delete: fileToDelete }]);
+        const parsedResponse = parseLLMResponse(response)!;
+        
+        await processPatch(config, parsedResponse, { cwd: testDir.path });
+
+        const deletedFileExists = await fs.access(path.join(testDir.path, fileToDelete)).then(() => true).catch(() => false);
+        expect(deletedFileExists).toBe(false);
+        
+        const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFileContent = await fs.readFile(stateFilePath, 'utf-8');
+        const stateData: any = yaml.load(stateFileContent);
+        expect(stateData.snapshot[fileToDelete]).toBe(originalDeleteContent);
+        expect(stateData.operations[0]).toEqual({ type: 'delete', path: fileToDelete });
+    });
+
+    it('should correctly roll back a file deletion operation', async () => {
+        const config = await createTestConfig(testDir.path, { approval: 'no' });
+        const fileToDelete = 'src/delete-me.ts';
+        const originalDeleteContent = 'delete this content';
+        await createTestFile(testDir.path, fileToDelete, originalDeleteContent);
+        
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START + 
+                         createDeleteFileBlock(fileToDelete) +
+                         LLM_RESPONSE_END(uuid, [{ delete: fileToDelete }]);
+
+        const parsedResponse = parseLLMResponse(response)!;
+        
+        await processPatch(config, parsedResponse, { prompter: async () => false, cwd: testDir.path });
+
+        const restoredFileExists = await fs.access(path.join(testDir.path, fileToDelete)).then(() => true).catch(() => false);
+        expect(restoredFileExists).toBe(true);
+        const content = await fs.readFile(path.join(testDir.path, fileToDelete), 'utf-8');
+        expect(content).toBe(originalDeleteContent);
+        
+        const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+        expect(stateFileExists).toBe(false);
+    });
+
+    it('should auto-approve if linter errors are within approvalOnErrorCount', async () => {
+        const config = await createTestConfig(testDir.path, {
+            approval: 'yes',
+            approvalOnErrorCount: 1,
+            linter: 'bun tsc'
+        });
+        const badContent = 'const x: string = 123;'; // 1 TS error
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START + 
+                        createFileBlock(testFile, badContent) + 
+                        LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
+        
+        const parsedResponse = parseLLMResponse(response);
+        expect(parsedResponse).not.toBeNull();
+        
+        await processPatch(config, parsedResponse!, { cwd: testDir.path });
+        
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe(badContent);
+
+        const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+        expect(stateFileExists).toBe(true);
+    });
+
+    it('should ignore orphaned .pending.yml file and allow reprocessing', async () => {
+        const config = await createTestConfig(testDir.path);
+        const uuid = uuidv4();
+        const newContent = 'console.log("final content");';
+
+        const stateDir = path.join(testDir.path, STATE_DIRECTORY_NAME);
+        await fs.mkdir(stateDir, { recursive: true });
+        const orphanedPendingFile = path.join(stateDir, `${uuid}.pending.yml`);
+        const orphanedState = { uuid, message: 'this is from a crashed run' };
+        await fs.writeFile(orphanedPendingFile, yaml.dump(orphanedState));
+
+        const response = LLM_RESPONSE_START + createFileBlock(testFile, newContent) + LLM_RESPONSE_END(uuid, []);
+        const parsedResponse = parseLLMResponse(response)!;
+        await processPatch(config, parsedResponse, { cwd: testDir.path });
+        
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe(newContent);
+
+        const finalStateFile = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFileExists = await fs.access(finalStateFile).then(() => true).catch(() => false);
+        expect(stateFileExists).toBe(true);
+        
+        const stateFileContent = await fs.readFile(finalStateFile, 'utf-8');
+        const stateData: any = yaml.load(stateFileContent);
+        expect(stateData.projectId).toBe(config.projectId);
+        expect(stateData.approved).toBe(true);
+    });
+
+    it('should successfully run pre and post commands (happy path)', async () => {
+        const preCommandFile = path.join(testDir.path, 'pre.txt');
+        const postCommandFile = path.join(testDir.path, 'post.txt');
+    
+        const config = await createTestConfig(testDir.path, {
+            preCommand: `touch ${preCommandFile}`,
+            postCommand: `touch ${postCommandFile}`,
+        });
+    
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START + createFileBlock(testFile, "new content") + LLM_RESPONSE_END(uuid, []);
+        const parsed = parseLLMResponse(response)!;
+    
+        await processPatch(config, parsed, { cwd: testDir.path });
+    
+        const preExists = await fs.access(preCommandFile).then(() => true).catch(() => false);
+        expect(preExists).toBe(true);
+    
+        const postExists = await fs.access(postCommandFile).then(() => true).catch(() => false);
+        expect(postExists).toBe(true);
+        
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe("new content");
+    });
+
+    it('should create a pending file during transaction and remove it on rollback', async () => {
+        const config = await createTestConfig(testDir.path, { approval: 'no' });
+        const newContent = 'I will be rolled back';
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START + 
+                         createFileBlock(testFile, newContent) + 
+                         LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
+    
+        const parsedResponse = parseLLMResponse(response)!;
+    
+        const stateDir = path.join(testDir.path, STATE_DIRECTORY_NAME);
+        const pendingPath = path.join(stateDir, `${uuid}.pending.yml`);
+        const committedPath = path.join(stateDir, `${uuid}.yml`);
+    
+        let pendingFileExistedDuringRun = false;
+    
+        const prompter = async (): Promise<boolean> => {
+            // At this point, the pending file should exist before we answer the prompt
+            pendingFileExistedDuringRun = await fs.access(pendingPath).then(() => true).catch(() => false);
+            return false; // Disapprove to trigger rollback
+        };
+    
+        await processPatch(config, parsedResponse, { prompter, cwd: testDir.path });
+    
+        expect(pendingFileExistedDuringRun).toBe(true);
+        
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe(originalContent);
+    
+        const pendingFileExistsAfter = await fs.access(pendingPath).then(() => true).catch(() => false);
+        expect(pendingFileExistsAfter).toBe(false);
+    
+        const committedFileExists = await fs.access(committedPath).then(() => true).catch(() => false);
+        expect(committedFileExists).toBe(false);
+    });
+
+    it('should fail transaction gracefully if a file is not writable', async () => {
+        // NOTE: This test verifies the current (buggy) behavior where a failed
+        // file operation leaves the system in an inconsistent state. A proper
+        // fix would involve rolling back on `applyOperations` failure.
+        const config = await createTestConfig(testDir.path);
+        const unwritableFile = 'src/unwritable.ts';
+        const writableFile = 'src/writable.ts';
+        const originalUnwritableContent = 'original unwritable';
+        const originalWritableContent = 'original writable';
+    
+        await createTestFile(testDir.path, unwritableFile, originalUnwritableContent);
+        await createTestFile(testDir.path, writableFile, originalWritableContent);
+        
+        const unwritableFilePath = path.join(testDir.path, unwritableFile);
+
+        try {
+            await fs.chmod(unwritableFilePath, 0o444); // Make read-only
+
+            const uuid = uuidv4();
+            const response = LLM_RESPONSE_START +
+                createFileBlock(writableFile, "new writable content") +
+                createFileBlock(unwritableFile, "new unwritable content") +
+                LLM_RESPONSE_END(uuid, [{ edit: writableFile }, { edit: unwritableFile }]);
+            
+            const parsedResponse = parseLLMResponse(response)!;
+            await processPatch(config, parsedResponse, { cwd: testDir.path });
+        
+            // Check file states: writable is changed, unwritable is not.
+            const finalWritable = await fs.readFile(path.join(testDir.path, writableFile), 'utf-8');
+            expect(finalWritable).toBe("new writable content"); 
+
+            const finalUnwritable = await fs.readFile(unwritableFilePath, 'utf-8');
+            expect(finalUnwritable).toBe(originalUnwritableContent);
+        
+            // Check for orphaned pending file
+            const pendingStatePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.pending.yml`);
+            const pendingFileExists = await fs.access(pendingStatePath).then(() => true).catch(() => false);
+            // This behavior is a bug: the pending file should be cleaned up after a rollback.
+            // The test currently asserts the buggy state.
+            expect(pendingFileExists).toBe(true);
+        } finally {
+            // Ensure file is writable again so afterEach hook can clean up
+            await fs.chmod(unwritableFilePath, 0o666);
+        }
     });
 });

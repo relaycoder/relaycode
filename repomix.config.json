@@ -6,13 +6,13 @@
     "filePath": "docs/repomix-output.md",
     "style": "markdown",
     "parsableStyle": false,
-    "fileSummary": true,
+    "fileSummary": false,
     "directoryStructure": true,
     "files": true,
     "removeComments": false,
     "removeEmptyLines": false,
-    "compress": false,
-    "topFilesLength": 5,
+    "compress": true,
+    "topFilesLength":5,
     "showLineNumbers": false,
     "copyToClipboard": true,
     "git": {
@@ -34,7 +34,8 @@
       "README.md",
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
-      "REQUIREMENT.md"
+      "REQUIREMENT.md",
+      "test"
     ]
   },
   "security": {

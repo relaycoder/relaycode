@@ -125,7 +125,7 @@ ________________________________________________
 
 ______________________________________________
 
-add more tests to cover below
+add more tests to cover below make sure to follow TEST RULE 2352 and Code changes rules 887
 
 Based on the requirements for `relaycode`, here is a comprehensive list of test items that should be covered.
 
