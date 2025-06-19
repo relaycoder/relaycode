@@ -189,3 +189,5 @@ Based on the requirements for `relaycode`, here is a comprehensive list of test 
 
 
 ____________________________________________________
+
+before applying, should compare parsed file with llm summary of changeSummary (filecount, what files) if not match, changeSummary from llm is the single source of truth for verification if the program confused why there are another invalid codeblock

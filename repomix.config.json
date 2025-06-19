@@ -22,7 +22,7 @@
     }
   },
   "include": [
-       "test"
+      //  "test"
   ],
   "ignore": {
     "useGitignore": true,
@@ -37,7 +37,7 @@
       "README.md",
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
-      "REQUIREMENT.md",
+      // "REQUIREMENT.md"
       // "test"
     ]
   },
