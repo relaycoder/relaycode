@@ -153,7 +153,7 @@ projectId: test-project
             expect(parsed).not.toBeNull();
             expect(parsed?.control.uuid).toBe(testUuid);
             expect(parsed?.control.projectId).toBe('test-project');
-            expect(parsed?.reasoning.join(' ')).toContain('I will edit the main file.');
+            expect(parsed?.reasoning.join(' ')).toContain('I have analyzed your request and here are the changes.');
             expect(parsed?.operations).toHaveLength(1);
             expect(parsed?.operations[0]).toEqual({
                 type: 'write',
@@ -249,6 +249,32 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             expect(operation?.type).toBe('write');
             if(operation?.type === 'write') {
                 expect(operation.content).toBe(content);
+            }
+        });
+
+        it('should strip START and END markers from parsed content', () => {
+            const filePath = 'src/markers.ts';
+            const content = 'const content = "here";';
+            
+            // The helper adds the markers
+            const block = createFileBlock(filePath, content);
+            
+            // Verify the block has the markers for sanity
+            expect(block).toContain('// START');
+            expect(block).toContain('// END');
+        
+            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+        
+            const parsed = parseLLMResponse(response);
+            const operation = parsed?.operations[0];
+        
+            expect(parsed).not.toBeNull();
+            expect(operation).not.toBeUndefined();
+            expect(operation?.type).toBe('write');
+            if (operation?.type === 'write') {
+                expect(operation.content).toBe(content);
+                expect(operation.content).not.toContain('// START');
+                expect(operation.content).not.toContain('// END');
             }
         });
     });
@@ -379,6 +405,23 @@ describe('e2e/init', () => {
         const config = JSON.parse(configContent);
         expect(config.projectId).toBe('custom');
         expect(config.customField).toBe(true);
+    });
+
+    it('should output the system prompt with the correct project ID', async () => {
+        const capturedOutput: string[] = [];
+        const originalLog = console.log;
+        console.log = (message: string) => capturedOutput.push(message);
+
+        const pkgName = 'my-prompt-project';
+        await createTestFile(testDir.path, 'package.json', JSON.stringify({ name: pkgName }));
+
+        await initCommand(testDir.path);
+
+        console.log = originalLog; // Restore
+
+        const outputString = capturedOutput.join('\n');
+        expect(outputString).toContain('Your project ID is: my-prompt-project');
+        expect(outputString).toContain('--- SYSTEM PROMPT ---');
     });
 });
 ```
@@ -579,6 +622,33 @@ describe('e2e/transaction', () => {
         // src directory should still exist as it contained a file before
         const srcDirExists = await fs.access(path.join(testDir.path, 'src')).then(() => true).catch(() => false);
         expect(srcDirExists).toBe(true);
+    });
+
+    it('should not delete parent directory on rollback if it was not empty beforehand', async () => {
+        const config = await createTestConfig(testDir.path, { approval: 'no' });
+        const existingFilePath = 'src/shared/existing.ts';
+        const newFilePath = 'src/shared/new.ts';
+        const uuid = uuidv4();
+
+        await createTestFile(testDir.path, existingFilePath, 'const existing = true;');
+
+        const response = LLM_RESPONSE_START +
+            createFileBlock(newFilePath, 'const brandNew = true;') +
+            LLM_RESPONSE_END(uuid, [{ new: newFilePath }]);
+
+        const parsed = parseLLMResponse(response)!;
+        await processPatch(config, parsed, { prompter: async () => false, cwd: testDir.path });
+
+        // New file should be gone
+        const newFileExists = await fs.access(path.join(testDir.path, newFilePath)).then(() => true).catch(() => false);
+        expect(newFileExists).toBe(false);
+
+        // Existing file and its directory should remain
+        const existingFileExists = await fs.access(path.join(testDir.path, existingFilePath)).then(() => true).catch(() => false);
+        expect(existingFileExists).toBe(true);
+
+        const sharedDirExists = await fs.access(path.join(testDir.path, 'src/shared')).then(() => true).catch(() => false);
+        expect(sharedDirExists).toBe(true);
     });
 
     it('should abort transaction if preCommand fails', async () => {

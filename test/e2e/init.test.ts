@@ -121,4 +121,21 @@ describe('e2e/init', () => {
         expect(config.projectId).toBe('custom');
         expect(config.customField).toBe(true);
     });
+
+    it('should output the system prompt with the correct project ID', async () => {
+        const capturedOutput: string[] = [];
+        const originalLog = console.log;
+        console.log = (message: string) => capturedOutput.push(message);
+
+        const pkgName = 'my-prompt-project';
+        await createTestFile(testDir.path, 'package.json', JSON.stringify({ name: pkgName }));
+
+        await initCommand(testDir.path);
+
+        console.log = originalLog; // Restore
+
+        const outputString = capturedOutput.join('\n');
+        expect(outputString).toContain('Your project ID is: my-prompt-project');
+        expect(outputString).toContain('--- SYSTEM PROMPT ---');
+    });
 });

@@ -59,7 +59,7 @@ projectId: test-project
             expect(parsed).not.toBeNull();
             expect(parsed?.control.uuid).toBe(testUuid);
             expect(parsed?.control.projectId).toBe('test-project');
-            expect(parsed?.reasoning.join(' ')).toContain('I will edit the main file.');
+            expect(parsed?.reasoning.join(' ')).toContain('I have analyzed your request and here are the changes.');
             expect(parsed?.operations).toHaveLength(1);
             expect(parsed?.operations[0]).toEqual({
                 type: 'write',
@@ -155,6 +155,32 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             expect(operation?.type).toBe('write');
             if(operation?.type === 'write') {
                 expect(operation.content).toBe(content);
+            }
+        });
+
+        it('should strip START and END markers from parsed content', () => {
+            const filePath = 'src/markers.ts';
+            const content = 'const content = "here";';
+            
+            // The helper adds the markers
+            const block = createFileBlock(filePath, content);
+            
+            // Verify the block has the markers for sanity
+            expect(block).toContain('// START');
+            expect(block).toContain('// END');
+        
+            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+        
+            const parsed = parseLLMResponse(response);
+            const operation = parsed?.operations[0];
+        
+            expect(parsed).not.toBeNull();
+            expect(operation).not.toBeUndefined();
+            expect(operation?.type).toBe('write');
+            if (operation?.type === 'write') {
+                expect(operation.content).toBe(content);
+                expect(operation.content).not.toContain('// START');
+                expect(operation.content).not.toContain('// END');
             }
         });
     });

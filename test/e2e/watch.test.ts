@@ -1,64 +1,3 @@
-Based on my analysis of the test requirements and the existing test suite, the main uncovered area was the resilience of the `watch` command's core loop, specifically:
-
--   **Should continue watching after encountering and rejecting an invalid patch.**
--   **Should ignore clipboard content that does not contain a valid patch format (from the perspective of the watch loop).**
-
-The following changes introduce a new end-to-end test for this scenario. This required a minor, non-breaking refactor of the `createClipboardWatcher` function to make it testable without using mocks, adhering to the project's testing philosophy.
-
-```typescript // src/core/clipboard.ts
-import clipboardy from 'clipboardy';
-import { logger } from '../utils/logger';
-
-type ClipboardCallback = (content: string) => void;
-type ClipboardReader = () => Promise<string>;
-
-export const createClipboardWatcher = (
-  pollInterval: number,
-  callback: ClipboardCallback,
-  reader: ClipboardReader = clipboardy.read,
-) => {
-  let lastContent = '';
-  let intervalId: NodeJS.Timeout | null = null;
-
-  const checkClipboard = async () => {
-    try {
-      const content = await reader();
-      if (content && content !== lastContent) {
-        lastContent = content;
-        callback(content);
-      }
-    } catch (error) {
-      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
-      // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard:', error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const start = () => {
-    if (intervalId) {
-      return;
-    }
-    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
-    // Immediately check once, then start the interval
-    checkClipboard();
-    intervalId = setInterval(checkClipboard, pollInterval);
-  };
-
-  const stop = () => {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      logger.info('Clipboard watcher stopped.');
-    }
-  };
-
-  start();
-  
-  return { stop };
-};
-```
-
-```typescript // test/e2e/watch.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -137,4 +76,3 @@ describe('e2e/watch', () => {
         expect(contentAfterValid).toBe(newContent);
     });
 });
-```

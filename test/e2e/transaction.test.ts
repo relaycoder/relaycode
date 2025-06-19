@@ -194,6 +194,33 @@ describe('e2e/transaction', () => {
         expect(srcDirExists).toBe(true);
     });
 
+    it('should not delete parent directory on rollback if it was not empty beforehand', async () => {
+        const config = await createTestConfig(testDir.path, { approval: 'no' });
+        const existingFilePath = 'src/shared/existing.ts';
+        const newFilePath = 'src/shared/new.ts';
+        const uuid = uuidv4();
+
+        await createTestFile(testDir.path, existingFilePath, 'const existing = true;');
+
+        const response = LLM_RESPONSE_START +
+            createFileBlock(newFilePath, 'const brandNew = true;') +
+            LLM_RESPONSE_END(uuid, [{ new: newFilePath }]);
+
+        const parsed = parseLLMResponse(response)!;
+        await processPatch(config, parsed, { prompter: async () => false, cwd: testDir.path });
+
+        // New file should be gone
+        const newFileExists = await fs.access(path.join(testDir.path, newFilePath)).then(() => true).catch(() => false);
+        expect(newFileExists).toBe(false);
+
+        // Existing file and its directory should remain
+        const existingFileExists = await fs.access(path.join(testDir.path, existingFilePath)).then(() => true).catch(() => false);
+        expect(existingFileExists).toBe(true);
+
+        const sharedDirExists = await fs.access(path.join(testDir.path, 'src/shared')).then(() => true).catch(() => false);
+        expect(sharedDirExists).toBe(true);
+    });
+
     it('should abort transaction if preCommand fails', async () => {
         const config = await createTestConfig(testDir.path, { preCommand: 'bun -e "process.exit(1)"' });
         const uuid = uuidv4();
