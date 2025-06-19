@@ -1,0 +1,35 @@
+import { findConfig } from '../core/config';
+import { createClipboardWatcher } from '../core/clipboard';
+import { parseLLMResponse } from '../core/parser';
+import { processPatch } from '../core/transaction';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME } from '../utils/constants';
+
+export const watchCommand = async (): Promise<void> => {
+  const config = await findConfig();
+
+  if (!config) {
+    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+    logger.info("Please run 'relay init' to create one.");
+    process.exit(1);
+  }
+  
+  logger.success('Configuration loaded. Starting relaycode watch...');
+
+  const watcher = createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    logger.info('New clipboard content detected. Attempting to parse...');
+    const parsedResponse = parseLLMResponse(content);
+
+    if (!parsedResponse) {
+      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
+      return;
+    }
+    
+    logger.success('Valid patch format detected. Processing...');
+    await processPatch(config, parsedResponse);
+    logger.info('--------------------------------------------------');
+    logger.info('Watching for next patch...');
+  });
+
+  watcher.start();
+};
