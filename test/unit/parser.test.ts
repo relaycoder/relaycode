@@ -1,0 +1,133 @@
+import { describe, it, expect } from 'bun:test';
+import { parseLLMResponse } from '../../src/core/parser';
+import { v4 as uuidv4 } from 'uuid';
+import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock } from '../test.util';
+
+describe('core/parser', () => {
+
+    describe('parseLLMResponse', () => {
+        const testUuid = uuidv4();
+
+        it('should return null if YAML block is missing', () => {
+            const response = `
+\`\`\`typescript // {src/index.ts}
+console.log("hello");
+\`\`\`
+            `;
+            expect(parseLLMResponse(response)).toBeNull();
+        });
+
+        it('should return null if YAML is malformed', () => {
+            const response = `
+\`\`\`typescript // {src/index.ts}
+console.log("hello");
+\`\`\`
+\`\`\`yaml
+projectId: test-project
+uuid: ${testUuid}
+  malformed: - yaml
+\`\`\`
+            `;
+            expect(parseLLMResponse(response)).toBeNull();
+        });
+
+        it('should return null if YAML is missing required fields', () => {
+            const response = `
+\`\`\`typescript // {src/index.ts}
+console.log("hello");
+\`\`\`
+\`\`\`yaml
+projectId: test-project
+\`\`\`
+            `;
+            expect(parseLLMResponse(response)).toBeNull();
+        });
+
+        it('should return null if no code blocks are found', () => {
+            const response = LLM_RESPONSE_START + LLM_RESPONSE_END(testUuid, []);
+            expect(parseLLMResponse(response)).toBeNull();
+        });
+
+        it('should correctly parse a single file write operation', () => {
+            const content = 'const a = 1;';
+            const filePath = 'src/utils.ts';
+            const block = createFileBlock(filePath, content);
+            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+            
+            const parsed = parseLLMResponse(response);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe(testUuid);
+            expect(parsed?.control.projectId).toBe('test-project');
+            expect(parsed?.reasoning.join(' ')).toContain('I will edit the main file.');
+            expect(parsed?.operations).toHaveLength(1);
+            expect(parsed?.operations[0]).toEqual({
+                type: 'write',
+                path: filePath,
+                content: content,
+            });
+        });
+
+        it('should correctly parse a single file delete operation', () => {
+            const filePath = 'src/old-file.ts';
+            const block = createDeleteFileBlock(filePath);
+            const response = "I'm deleting this old file." + block + LLM_RESPONSE_END(testUuid, [{ delete: filePath }]);
+
+            const parsed = parseLLMResponse(response);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(1);
+            expect(parsed?.operations[0]).toEqual({
+                type: 'delete',
+                path: filePath,
+            });
+        });
+
+        it('should correctly parse multiple mixed operations', () => {
+            const filePath1 = 'src/main.ts';
+            const content1 = 'console.log("main");';
+            const filePath2 = 'src/to-delete.ts';
+            const filePath3 = 'src/new-feature.ts';
+            const content3 = 'export const feature = {};';
+
+            const response = [
+                "I'll make three changes.",
+                createFileBlock(filePath1, content1),
+                "Then delete a file.",
+                createDeleteFileBlock(filePath2),
+                "And finally add a new one.",
+                createFileBlock(filePath3, content3),
+                LLM_RESPONSE_END(testUuid, [{edit: filePath1}, {delete: filePath2}, {new: filePath3}])
+            ].join('\n');
+
+            const parsed = parseLLMResponse(response);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(3);
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath1, content: content1 });
+            expect(parsed?.operations).toContainEqual({ type: 'delete', path: filePath2 });
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: content3 });
+            expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
+        });
+
+        it('should correctly extract content even if START/END markers are missing', () => {
+            const filePath = 'src/simple.ts';
+            const content = 'const simple = true;';
+            const response = `
+\`\`\`typescript // {${filePath}}
+${content}
+\`\`\`
+${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
+            `;
+
+            const parsed = parseLLMResponse(response);
+            const operation = parsed?.operations.find(op => op.path === filePath);
+            
+            expect(parsed).not.toBeNull();
+            expect(operation?.type).toBe('write');
+            if(operation?.type === 'write') {
+                expect(operation.content).toBe(content);
+            }
+        });
+    });
+});

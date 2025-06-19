@@ -1,18 +1,21 @@
-import { Config, ParsedLLMResponse, StateFile } from '../types';
+import { Config, ParsedLLMResponse, StateFile, FileSnapshot } from '../types';
 import { logger } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, applyOperations, restoreSnapshot } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
 
+type Prompter = (question: string) => Promise<boolean>;
+
 type TransactionDependencies = {
   config: Config;
   parsedResponse: ParsedLLMResponse;
+  prompter?: Prompter;
 };
 
 // This HOF encapsulates the logic for processing a single patch.
 const createTransaction = (deps: TransactionDependencies) => {
-  const { config, parsedResponse } = deps;
+  const { config, parsedResponse, prompter = getConfirmation } = deps;
   const { control, operations, reasoning } = parsedResponse;
   const { uuid, projectId } = control;
 
@@ -24,20 +27,18 @@ const createTransaction = (deps: TransactionDependencies) => {
       return false;
     }
     if (await hasBeenProcessed(uuid)) {
-      // This is not a warning because it's expected if you copy the same response twice.
       logger.info(`Skipping patch: uuid '${uuid}' has already been processed.`);
       return false;
     }
     return true;
   };
   
-  const execute = async (): Promise<void> => {
+  const execute = async (snapshot: FileSnapshot): Promise<void> => {
     logger.info(`🚀 Starting transaction for patch ${uuid}...`);
     logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
     
-    // --- Staging Phase ---
-    logger.log('  - Taking snapshot of affected files...');
-    const snapshot = await createSnapshot(affectedFilePaths);
+    // Snapshot is already taken before calling this function
+    logger.log('  - Snapshot of affected files taken.');
     
     if(config.preCommand) {
       logger.log(`  - Running pre-command: ${config.preCommand}`);
@@ -78,7 +79,7 @@ const createTransaction = (deps: TransactionDependencies) => {
         isApproved = true;
         logger.success('  - Changes automatically approved based on your configuration.');
     } else {
-        isApproved = await getConfirmation('Changes applied. Do you want to approve and commit them? (y/N)');
+        isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
     }
     
     // --- Commit/Rollback Phase ---
@@ -100,21 +101,26 @@ const createTransaction = (deps: TransactionDependencies) => {
     run: async () => {
       if (!(await validate())) return;
 
+      const snapshot = await createSnapshot(affectedFilePaths);
+
       try {
-        await execute();
+        await execute(snapshot);
       } catch (error) {
         logger.error(`Transaction ${uuid} failed: ${error instanceof Error ? error.message : String(error)}`);
         logger.warn('Attempting to roll back from snapshot...');
-        const snapshot = await createSnapshot(affectedFilePaths); // Re-create snapshot just in case it failed before writing
         await restoreSnapshot(snapshot);
         await deletePendingState(uuid);
-        logger.success('Rollback attempted.');
+        logger.success('Rollback completed due to error.');
       }
     },
   };
 };
 
-export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse): Promise<void> => {
-    const transaction = createTransaction({ config, parsedResponse });
+type ProcessPatchOptions = {
+    prompter?: Prompter;
+}
+
+export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse, options?: ProcessPatchOptions): Promise<void> => {
+    const transaction = createTransaction({ config, parsedResponse, prompter: options?.prompter });
     await transaction.run();
 };
