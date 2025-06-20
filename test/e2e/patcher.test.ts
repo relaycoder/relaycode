@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,67 +6,7 @@ import { processPatch } from '../../src/core/transaction';
 import { parseLLMResponse } from '../../src/core/parser';
 import { setupTestDirectory, TestDir, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
 
-// Mock the diff-apply library
-mock.module('diff-apply', () => {
-    const multiSearchReplaceLogic = (params: { originalContent: string; diffContent: string; }): { success: boolean; content: string; error?: string; } => {
-        let modifiedContent = params.originalContent;
-        const blocks = params.diffContent.split('>>>>>>> REPLACE').filter(b => b.trim());
-        
-        for (const block of blocks) {
-            const parts = block.split('=======');
-            if (parts.length !== 2) return { success: false, content: params.originalContent, error: 'Invalid block' };
-
-            const searchBlock = parts[0];
-            let replaceContent = parts[1];
-
-            if (searchBlock === undefined || replaceContent === undefined) {
-                return { success: false, content: params.originalContent, error: 'Invalid block structure' };
-            }
-
-            const searchPart = searchBlock.split('<<<<<<< SEARCH')[1];
-            if (!searchPart) return { success: false, content: params.originalContent, error: 'Invalid search block' };
-            
-            const searchContentPart = searchPart.split('-------')[1];
-            if (searchContentPart === undefined) return { success: false, content: params.originalContent, error: 'Invalid search block content' };
-
-            let searchContent = searchContentPart;
-            if (searchContent.startsWith('\n')) searchContent = searchContent.substring(1);
-            if (searchContent.endsWith('\n')) searchContent = searchContent.slice(0, -1);
-            if (replaceContent.startsWith('\n')) replaceContent = replaceContent.substring(1);
-            if (replaceContent.endsWith('\n')) replaceContent = replaceContent.slice(0, -1);
-
-            if (modifiedContent.includes(searchContent)) {
-                modifiedContent = modifiedContent.replace(searchContent, replaceContent);
-            } else {
-                return { success: false, content: params.originalContent, error: 'Search content not found' };
-            }
-        }
-        return { success: true, content: modifiedContent };
-    };
-
-    return {
-        newUnifiedDiffStrategyService: {
-            newUnifiedDiffStrategyService: {
-                create: () => ({
-                    applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
-                })
-            }
-        },
-        multiSearchReplaceService: {
-            multiSearchReplaceService: {
-                applyDiff: async (params: { originalContent: string, diffContent: string }) => {
-                    return multiSearchReplaceLogic(params);
-                }
-            }
-        },
-        unifiedDiffService: {
-            unifiedDiffService: {
-                applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
-            }
-        }
-    };
-});
-
+// NOTE: This test file uses the actual 'diff-apply' dependency, not a mock.
 
 describe('e2e/patcher', () => {
     let testDir: TestDir;
@@ -133,6 +73,48 @@ const config = {
 `;
         expect(finalContent.replace(/\s/g, '')).toBe(expectedContent.replace(/\s/g, ''));
     });
+
+    it('should correctly apply a patch using the new-unified strategy', async () => {
+        const config = await createTestConfig(testDir.path);
+        const testFile = 'src/utils.js';
+        const originalContent = `function calculate() {
+    const a = 1;
+    const b = 2;
+    return a + b;
+}`;
+        await createTestFile(testDir.path, testFile, originalContent);
+
+        const diffContent = `--- a/${testFile}
++++ b/${testFile}
+@@ -2,4 +2,5 @@
+     const a = 1;
+     const b = 2;
+-    return a + b;
++    // A more complex calculation
++    return (a + b) * 2;
+ }`;
+        
+        const uuid = uuidv4();
+        const llmResponse = createFileBlock(testFile, diffContent, 'new-unified') + 
+                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
+
+        const parsedResponse = parseLLMResponse(llmResponse);
+        expect(parsedResponse).not.toBeNull();
+
+        await processPatch(config, parsedResponse!, { cwd: testDir.path });
+
+        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        
+        const expectedContent = `function calculate() {
+    const a = 1;
+    const b = 2;
+    // A more complex calculation
+    return (a + b) * 2;
+}`;
+        // Normalize line endings for comparison
+        expect(finalContent.replace(/\r\n/g, '\n')).toBe(expectedContent.replace(/\r\n/g, '\n'));
+    });
+
 
     it('should fail transaction if multi-search-replace content is not found', async () => {
         const config = await createTestConfig(testDir.path);

@@ -29,58 +29,58 @@ const extractCodeBetweenMarkers = (content: string): string => {
 };
 
 export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
-    const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
-    if (!yamlMatch || typeof yamlMatch[1] !== 'string') return null;
-
-    let control;
     try {
-        const yamlContent = yaml.load(yamlMatch[1]);
-        control = ControlYamlSchema.parse(yamlContent);
-    } catch (e) {
-        // Invalid YAML or doesn't match schema
-        return null;
-    }
+        const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
+        if (!yamlMatch || typeof yamlMatch[1] !== 'string') return null;
 
-    const textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
-    
-    const operations: FileOperation[] = [];
-    const matchedBlocks: string[] = [];
-    
-    let match;
-    while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
-        const [fullMatch, filePath, patchStrategyStr, rawContent] = match;
-
-        if (typeof filePath !== 'string' || typeof rawContent !== 'string') {
-            continue;
+        let control;
+        try {
+            const yamlContent = yaml.load(yamlMatch[1]);
+            control = ControlYamlSchema.parse(yamlContent);
+        } catch (e) {
+            // Invalid YAML or doesn't match schema
+            return null;
         }
 
-        matchedBlocks.push(fullMatch);
-        const content = rawContent.trim();
-        const patchStrategy = PatchStrategySchema.parse(patchStrategyStr || undefined);
+        const textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
+        
+        const operations: FileOperation[] = [];
+        const matchedBlocks: string[] = [];
+        
+        let match;
+        while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
+            const [fullMatch, filePath, patchStrategyStr, rawContent] = match;
+
+            if (typeof filePath !== 'string' || typeof rawContent !== 'string') {
+                continue;
+            }
+
+            matchedBlocks.push(fullMatch);
+            const content = rawContent.trim();
+            const patchStrategy = PatchStrategySchema.parse(patchStrategyStr || undefined);
 
 
-        if (content === DELETE_FILE_MARKER) {
-            operations.push({ type: 'delete', path: filePath.trim() });
-        } else {
-            const cleanContent = extractCodeBetweenMarkers(content);
-            operations.push({ 
-                type: 'write', 
-                path: filePath.trim(), 
-                content: cleanContent, 
-                patchStrategy 
-            });
+            if (content === DELETE_FILE_MARKER) {
+                operations.push({ type: 'delete', path: filePath.trim() });
+            } else {
+                const cleanContent = extractCodeBetweenMarkers(content);
+                operations.push({ 
+                    type: 'write', 
+                    path: filePath.trim(), 
+                    content: cleanContent, 
+                    patchStrategy 
+                });
+            }
         }
-    }
-    
-    let reasoningText = textWithoutYaml;
-    for (const block of matchedBlocks) {
-        reasoningText = reasoningText.replace(block, '');
-    }
-    const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
+        
+        let reasoningText = textWithoutYaml;
+        for (const block of matchedBlocks) {
+            reasoningText = reasoningText.replace(block, '');
+        }
+        const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
 
-    if (operations.length === 0) return null;
+        if (operations.length === 0) return null;
 
-    try {
         const parsedResponse = ParsedLLMResponseSchema.parse({
             control,
             operations,
@@ -89,7 +89,8 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         return parsedResponse;
     } catch (e) {
         if (e instanceof z.ZodError) {
-            console.error("Zod validation failed on final parsed object:", e.errors);
+            // This is expected for invalid input, so we don't log it.
+            // A consumer of the parser might want to know why it failed, but for now, null is enough.
         }
         return null;
     }

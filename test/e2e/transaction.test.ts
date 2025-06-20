@@ -549,4 +549,48 @@ changeSummary: []
             await fs.chmod(readonlyDirPath, 0o777); // Make writable again for cleanup
         }
     });
+
+    it('should correctly rollback a complex transaction (modify, delete, create)', async () => {
+        const config = await createTestConfig(testDir.path, { approval: 'no' });
+        
+        // Setup initial files
+        const fileToModify = 'src/modify.ts';
+        const originalModifyContent = 'export const a = 1;';
+        await createTestFile(testDir.path, fileToModify, originalModifyContent);
+    
+        const fileToDelete = 'src/delete.ts';
+        const originalDeleteContent = 'export const b = 2;';
+        await createTestFile(testDir.path, fileToDelete, originalDeleteContent);
+    
+        const newFilePath = 'src/new/component.ts';
+        const newFileContent = 'export const c = 3;';
+    
+        const uuid = uuidv4();
+        const response = LLM_RESPONSE_START +
+            createFileBlock(fileToModify, 'export const a = 100;') +
+            createDeleteFileBlock(fileToDelete) +
+            createFileBlock(newFilePath, newFileContent) +
+            LLM_RESPONSE_END(uuid, [{ edit: fileToModify }, { delete: fileToDelete }, { new: newFilePath }]);
+    
+        const parsed = parseLLMResponse(response)!;
+    
+        // Disapprove the transaction
+        await processPatch(config, parsed, { prompter: async () => false, cwd: testDir.path });
+    
+        // Verify rollback
+        const modifiedFileContent = await fs.readFile(path.join(testDir.path, fileToModify), 'utf-8');
+        expect(modifiedFileContent).toBe(originalModifyContent);
+    
+        const deletedFileExists = await fs.access(path.join(testDir.path, fileToDelete)).then(() => true).catch(() => false);
+        expect(deletedFileExists).toBe(true);
+        const deletedFileContent = await fs.readFile(path.join(testDir.path, fileToDelete), 'utf-8');
+        expect(deletedFileContent).toBe(originalDeleteContent);
+    
+        const newFileExists = await fs.access(path.join(testDir.path, newFilePath)).then(() => true).catch(() => false);
+        expect(newFileExists).toBe(false);
+    
+        // Verify empty parent directory of new file is also removed
+        const newFileDirExists = await fs.access(path.join(testDir.path, 'src/new')).then(() => true).catch(() => false);
+        expect(newFileDirExists).toBe(false);
+    });
 });

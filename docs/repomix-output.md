@@ -296,154 +296,6 @@ export const ShellCommandResultSchema = z.object({
 export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
 ````
 
-## File: src/commands/init.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
-
-const getSystemPrompt = (projectId: string): string => `
-✅ relaycode has been initialized for this project.
-
-IMPORTANT: For relaycode to work, you must configure your AI assistant.
-Copy the entire text below and paste it into your LLM's "System Prompt"
-or "Custom Instructions" section.
----------------------------------------------------------------------------
-
-You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
-
-**Syntax:**
-\`\`\`typescript // {filePath} {patchStrategy}
-... content ...
-\`\`\`
-- \`filePath\`: The path to the file.
-- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
-
----
-
-### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
-
-Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
-
-**Diff Format:**
-1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
-2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
-3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
-4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
-
-**Example:**
-\`\`\`diff
---- src/utils.ts
-+++ src/utils.ts
-@@ ... @@
-    function calculateTotal(items: number[]): number {
--      return items.reduce((sum, item) => {
--        return sum + item;
--      }, 0);
-+      const total = items.reduce((sum, item) => {
-+        return sum + item * 1.1;  // Add 10% markup
-+      }, 0);
-+      return Math.round(total * 100) / 100;  // Round to 2 decimal places
-+    }
-\`\`\`
-
----
-
-### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
-
-Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
-
-**Diff Format:**
-Repeat this block for each replacement.
-\`\`\`diff
-<<<<<<< SEARCH
-:start_line: (optional)
-:end_line: (optional)
--------
-[exact content to find including whitespace]
-=======
-[new content to replace with]
->>>>>>> REPLACE
-\`\`\`
-
----
-
-### Other Operations
-
--   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
--   **Deleting a file**:
-    \`\`\`typescript // {filePath}
-    //TODO: delete this file
-    \`\`\`
-
----
-
-### Final Steps
-
-1.  Add your step-by-step reasoning in plain text before each code block.
-2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
-
-    \`\`\`yaml
-    projectId: ${projectId}
-    uuid: (generate a random uuid)
-    changeSummary:
-      - edit: src/main.ts
-      - new: src/components/Button.tsx
-      - delete: src/utils/old-helper.ts
-    \`\`\`
----------------------------------------------------------------------------
-You are now ready to run 'relay watch' in your terminal.
-`;
-
-const updateGitignore = async (cwd: string): Promise<void> => {
-    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
-    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
-
-    try {
-        let content = await fs.readFile(gitignorePath, 'utf-8');
-        if (!content.includes(STATE_DIRECTORY_NAME)) {
-            content += entry;
-            await fs.writeFile(gitignorePath, content);
-            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
-        }
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            await fs.writeFile(gitignorePath, entry.trim());
-            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
-        } else {
-            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-};
-
-export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
-    logger.info('Initializing relaycode in this project...');
-
-    const existingConfig = await findConfig(cwd);
-    if (existingConfig) {
-        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        const config = await findConfig(cwd);
-        if(config){
-            logger.log(getSystemPrompt(config.projectId));
-        }
-        return;
-    }
-    
-    const projectId = await getProjectId(cwd);
-    await createConfig(projectId, cwd);
-    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
-    
-    await ensureStateDirExists(cwd);
-    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
-
-    await updateGitignore(cwd);
-
-    logger.log(getSystemPrompt(projectId));
-};
-````
-
 ## File: src/core/clipboard.ts
 ````typescript
 import clipboardy from 'clipboardy';
@@ -944,103 +796,148 @@ export const createDeleteFileBlock = (filePath: string): string => {
 };
 ````
 
-## File: src/core/state.ts
+## File: src/commands/init.ts
 ````typescript
 import { promises as fs } from 'fs';
 import path from 'path';
-import yaml from 'js-yaml';
-import { StateFile, StateFileSchema } from '../types';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
+import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
 
-const stateDirectoryCache = new Map<string, boolean>();
+const getSystemPrompt = (projectId: string): string => `
+✅ relaycode has been initialized for this project.
 
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+IMPORTANT: For relaycode to work, you must configure your AI assistant.
+Copy the entire text below and paste it into your LLM's "System Prompt"
+or "Custom Instructions" section.
+---------------------------------------------------------------------------
 
-const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd), fileName);
-};
+You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
 
-// Ensure state directory exists with caching for performance
-const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = getStateDirectory(cwd);
-  if (!stateDirectoryCache.has(dirPath)) {
-    await fs.mkdir(dirPath, { recursive: true });
-    stateDirectoryCache.set(dirPath, true);
-  }
-};
+**Syntax:**
+\`\`\`typescript // {filePath} {patchStrategy}
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file.
+- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
 
-export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  try {
-    // Only check for a committed state file.
-    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-    await fs.access(committedPath);
-    return true;
-  } catch (e) {
-    return false;
-  }
-};
+---
 
-export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
-  const validatedState = StateFileSchema.parse(state);
-  const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(cwd, state.uuid, true);
-  
-  // Ensure directory exists (cached)
-  await ensureStateDirectory(cwd);
-  
-  // Write file
-  await fs.writeFile(filePath, yamlString, 'utf-8');
-};
+### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
 
-export const commitState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  
-  try {
-    // Read the pending state first to ensure we have the approved flag set correctly
-    const pendingContent = await fs.readFile(pendingPath, 'utf8');
-    const stateData = yaml.load(pendingContent) as StateFile;
-    
-    // Ensure approved flag is set to true
-    const finalState: StateFile = { ...stateData, approved: true };
-    const finalContent = yaml.dump(finalState);
-    
-    // Write directly to the committed path
-    await fs.writeFile(committedPath, finalContent, 'utf8');
-    
-    // Then delete the pending file
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    // If an error occurs, try the old rename approach as fallback
-    console.warn("Error in optimized commit process, falling back to rename:", error);
+Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
+
+**Diff Format:**
+1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
+2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
+3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
+4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
+
+**Example:**
+\`\`\`diff
+--- src/utils.ts
++++ src/utils.ts
+@@ ... @@
+    function calculateTotal(items: number[]): number {
+-      return items.reduce((sum, item) => {
+-        return sum + item;
+-      }, 0);
++      const total = items.reduce((sum, item) => {
++        return sum + item * 1.1;  // Add 10% markup
++      }, 0);
++      return Math.round(total * 100) / 100;  // Round to 2 decimal places
++    }
+\`\`\`
+
+---
+
+### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
+
+Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
+
+**Diff Format:**
+Repeat this block for each replacement.
+\`\`\`diff
+<<<<<<< SEARCH
+:start_line: (optional)
+:end_line: (optional)
+-------
+[exact content to find including whitespace]
+=======
+[new content to replace with]
+>>>>>>> REPLACE
+\`\`\`
+
+---
+
+### Other Operations
+
+-   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
+-   **Deleting a file**:
+    \`\`\`typescript // {filePath}
+    //TODO: delete this file
+    \`\`\`
+
+---
+
+### Final Steps
+
+1.  Add your step-by-step reasoning in plain text before each code block.
+2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
+
+    \`\`\`yaml
+    projectId: ${projectId}
+    uuid: (generate a random uuid)
+    changeSummary:
+      - edit: src/main.ts
+      - new: src/components/Button.tsx
+      - delete: src/utils/old-helper.ts
+    \`\`\`
+---------------------------------------------------------------------------
+You are now ready to run 'relay watch' in your terminal.
+`;
+
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
+    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+
     try {
-      await fs.rename(pendingPath, committedPath);
-    } catch (renameError) {
-      // If rename fails (e.g., across filesystems), fall back to copy+delete
-      if (renameError instanceof Error && 'code' in renameError && renameError.code === 'EXDEV') {
-        const content = await fs.readFile(pendingPath, 'utf8');
-        await fs.writeFile(committedPath, content, 'utf8');
-        await fs.unlink(pendingPath);
-      } else {
-        throw renameError;
-      }
+        let content = await fs.readFile(gitignorePath, 'utf-8');
+        if (!content.includes(STATE_DIRECTORY_NAME)) {
+            content += entry;
+            await fs.writeFile(gitignorePath, content);
+            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            await fs.writeFile(gitignorePath, entry.trim());
+            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+        } else {
+            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
-  }
 };
 
-export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  try {
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      // Already gone, that's fine.
-      return;
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    logger.info('Initializing relaycode in this project...');
+
+    const config = await findConfig(cwd);
+    if (config) {
+        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.log(getSystemPrompt(config.projectId));
+        return;
     }
-    throw error;
-  }
+    
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
+    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
+    
+    await ensureStateDirExists(cwd);
+    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
+
+    await updateGitignore(cwd);
+
+    logger.log(getSystemPrompt(projectId));
 };
 ````
 
@@ -1127,6 +1024,89 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
+````
+
+## File: src/core/state.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { StateFile, StateFileSchema } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+
+const stateDirectoryCache = new Map<string, boolean>();
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd), fileName);
+};
+
+// Ensure state directory exists with caching for performance
+const ensureStateDirectory = async (cwd: string): Promise<void> => {
+  const dirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    stateDirectoryCache.set(dirPath, true);
+  }
+};
+
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    // Only check for a committed state file.
+    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+    await fs.access(committedPath);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
+  const validatedState = StateFileSchema.parse(state);
+  const yamlString = yaml.dump(validatedState);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  
+  // Ensure directory exists (cached)
+  await ensureStateDirectory(cwd);
+  
+  // Write file
+  await fs.writeFile(filePath, yamlString, 'utf-8');
+};
+
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
+
+  try {
+    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
+    await fs.rename(pendingPath, committedPath);
+  } catch (error) {
+    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(pendingPath, committedPath);
+      await fs.unlink(pendingPath);
+    } else {
+      // Re-throw other errors
+      throw error;
+    }
+  }
+};
+
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  try {
+    await fs.unlink(pendingPath);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // Already gone, that's fine.
+      return;
+    }
+    throw error;
+  }
+};
 ````
 
 ## File: test/e2e/init.test.ts
@@ -2425,11 +2405,10 @@ const createTransaction = (deps: TransactionDependencies) => {
     if (isApproved) {
         logger.log('  - Committing changes...');
         const finalState: StateFile = { ...stateFile, approved: true };
-        // Update pending state and commit in parallel
-        await Promise.all([
-          writePendingState(cwd, finalState),
-          commitState(cwd, uuid)
-        ]);
+        // Update pending state with approved: true, then commit (rename) the file.
+        // This is now sequential to prevent a race condition.
+        await writePendingState(cwd, finalState);
+        await commitState(cwd, uuid);
 
         const duration = performance.now() - startTime;
         const totalSucceeded = opStats.length;

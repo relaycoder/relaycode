@@ -5,6 +5,7 @@ import { initCommand } from '../../src/commands/init';
 import { setupTestDirectory, TestDir, createTestFile } from '../test.util';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
 import { ConfigSchema } from '../../src/types';
+import { logger } from '../../src/utils/logger';
 
 describe('e2e/init', () => {
     let testDir: TestDir;
@@ -137,5 +138,45 @@ describe('e2e/init', () => {
         const outputString = capturedOutput.join('\n');
         expect(outputString).toContain(`projectId: ${pkgName}`);
         expect(outputString).toContain('You are an expert AI programmer.');
+    });
+
+    it('should log an error if .gitignore is not writable', async () => {
+        const gitignorePath = path.join(testDir.path, GITIGNORE_FILE_NAME);
+        await createTestFile(testDir.path, GITIGNORE_FILE_NAME, '# initial');
+        
+        const capturedErrors: string[] = [];
+        const originalError = logger.error;
+        const originalInfo = logger.info;
+        const originalSuccess = logger.success;
+        const originalLog = logger.log;
+        const originalWarn = logger.warn;
+
+        logger.error = (message: string) => capturedErrors.push(message);
+        logger.info = () => {};
+        logger.success = () => {};
+        logger.log = () => {};
+        logger.warn = () => {};
+
+        try {
+            await fs.chmod(gitignorePath, 0o444); // Read-only
+
+            // initCommand doesn't throw, it just logs an error.
+            await initCommand(testDir.path);
+
+            const gitignoreContent = await fs.readFile(gitignorePath, 'utf-8');
+            expect(gitignoreContent).toBe('# initial'); // Should not have changed
+            expect(capturedErrors.length).toBe(1);
+            expect(capturedErrors[0]).toContain(`Failed to update ${GITIGNORE_FILE_NAME}`);
+        } finally {
+            // Restore loggers
+            logger.error = originalError;
+            logger.info = originalInfo;
+            logger.success = originalSuccess;
+            logger.log = originalLog;
+            logger.warn = originalWarn;
+            
+            // Make writable again for cleanup
+            await fs.chmod(gitignorePath, 0o666);
+        }
     });
 });

@@ -204,5 +204,17 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
                 expect(operation.content).not.toContain('// END');
             }
         });
+
+        it('should return null for an unknown patch strategy', () => {
+            const filePath = 'src/index.ts';
+            const content = 'console.log("hello");';
+            const block = `
+\`\`\`typescript // {${filePath}} unknown-strategy
+${content}
+\`\`\`
+            `;
+            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
+            expect(parseLLMResponse(response)).toBeNull();
+        });
     });
 });
