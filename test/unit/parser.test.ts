@@ -10,7 +10,7 @@ describe('core/parser', () => {
 
         it('should return null if YAML block is missing', () => {
             const response = `
-\`\`\`typescript // {src/index.ts}
+\`\`\`typescript // src/index.ts
 console.log("hello");
 \`\`\`
             `;
@@ -19,7 +19,7 @@ console.log("hello");
 
         it('should return null if YAML is malformed', () => {
             const response = `
-\`\`\`typescript // {src/index.ts}
+\`\`\`typescript // src/index.ts
 console.log("hello");
 \`\`\`
 \`\`\`yaml
@@ -33,7 +33,7 @@ uuid: ${testUuid}
 
         it('should return null if YAML is missing required fields', () => {
             const response = `
-\`\`\`typescript // {src/index.ts}
+\`\`\`typescript // src/index.ts
 console.log("hello");
 \`\`\`
 \`\`\`yaml
@@ -126,10 +126,19 @@ projectId: test-project
             expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
         });
         
-        it('should handle file paths with spaces', () => {
+        it('should handle file paths with spaces when quoted', () => {
             const filePath = 'src/components/a file with spaces.tsx';
             const content = '<button>Click Me</button>';
-            const response = createFileBlock(filePath, content) + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
+            const block = `
+\`\`\`typescript // "${filePath}"
+// START
+
+${content}
+
+// END
+\`\`\`
+`;
+            const response = block + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
@@ -151,7 +160,7 @@ projectId: test-project
 
         it('should ignore malformed code blocks', () => {
             const response = `
-\`\`\`typescript // {malformed-path.ts
+\`\`\`typescript //
 const a = 1;
 \`\`\`
 ${LLM_RESPONSE_END(testUuid, [])}
@@ -163,7 +172,7 @@ ${LLM_RESPONSE_END(testUuid, [])}
             const filePath = 'src/simple.ts';
             const content = 'const simple = true;';
             const response = `
-\`\`\`typescript // {${filePath}}
+\`\`\`typescript // ${filePath}
 ${content}
 \`\`\`
 ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
@@ -209,7 +218,7 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             const filePath = 'src/index.ts';
             const content = 'console.log("hello");';
             const block = `
-\`\`\`typescript // {${filePath}} unknown-strategy
+\`\`\`typescript // ${filePath} unknown-strategy
 ${content}
 \`\`\`
             `;

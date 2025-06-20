@@ -5,6 +5,7 @@ import {
     FileOperation,
     ParsedLLMResponse,
     ParsedLLMResponseSchema,
+    PatchStrategy,
     PatchStrategySchema,
 } from '../types';
 import {
@@ -13,7 +14,7 @@ import {
     DELETE_FILE_MARKER
 } from '../utils/constants';
 
-const CODE_BLOCK_REGEX = /```(?:\w+)?\s*\/\/\s*{(.*?)}\s*(\S*)\n([\s\S]*?)\n```/g;
+const CODE_BLOCK_REGEX = /```(?:\w+)?\s*\/\/\s*(.*?)\n([\s\S]*?)\n```/g;
 const YAML_BLOCK_REGEX = /```yaml\n([\s\S]+?)\n```\s*$/;
 
 const extractCodeBetweenMarkers = (content: string): string => {
@@ -38,7 +39,6 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             const yamlContent = yaml.load(yamlMatch[1]);
             control = ControlYamlSchema.parse(yamlContent);
         } catch (e) {
-            // Invalid YAML or doesn't match schema
             return null;
         }
 
@@ -49,24 +49,53 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         
         let match;
         while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
-            const [fullMatch, filePath, patchStrategyStr, rawContent] = match;
+            const [fullMatch, headerLineUntrimmed, rawContent] = match;
 
-            if (typeof filePath !== 'string' || typeof rawContent !== 'string') {
+            if (typeof headerLineUntrimmed !== 'string' || typeof rawContent !== 'string') {
+                continue;
+            }
+
+            const headerLine = headerLineUntrimmed.trim();
+            if (headerLine === '') {
                 continue;
             }
 
             matchedBlocks.push(fullMatch);
             const content = rawContent.trim();
-            const patchStrategy = PatchStrategySchema.parse(patchStrategyStr || undefined);
+            
+            let filePath = '';
+            let patchStrategy: PatchStrategy;
+            
+            const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
+            if (quotedMatch) {
+                filePath = quotedMatch[1]!;
+                const strategyStr = quotedMatch[2] || '';
+                const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
+                if (!parsedStrategy.success) continue;
+                patchStrategy = parsedStrategy.data;
+            } else {
+                const parts = headerLine.split(/\s+/);
+                if (parts.length > 1) {
+                    const strategyStr = parts.pop()!;
+                    const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
+                    if (!parsedStrategy.success) continue;
+                    patchStrategy = parsedStrategy.data;
+                    filePath = parts.join(' ');
+                } else {
+                    filePath = headerLine;
+                    patchStrategy = PatchStrategySchema.parse(undefined);
+                }
+            }
 
+            if (!filePath) continue;
 
             if (content === DELETE_FILE_MARKER) {
-                operations.push({ type: 'delete', path: filePath.trim() });
+                operations.push({ type: 'delete', path: filePath });
             } else {
                 const cleanContent = extractCodeBetweenMarkers(content);
                 operations.push({ 
                     type: 'write', 
-                    path: filePath.trim(), 
+                    path: filePath, 
                     content: cleanContent, 
                     patchStrategy 
                 });
@@ -89,8 +118,6 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         return parsedResponse;
     } catch (e) {
         if (e instanceof z.ZodError) {
-            // This is expected for invalid input, so we don't log it.
-            // A consumer of the parser might want to know why it failed, but for now, null is enough.
         }
         return null;
     }

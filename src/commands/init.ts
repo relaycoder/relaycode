@@ -15,11 +15,19 @@ or "Custom Instructions" section.
 You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
 
 **Syntax:**
-\`\`\`typescript // {filePath} {patchStrategy}
+\`\`\`typescript // filePath {patchStrategy}
 ... content ...
 \`\`\`
-- \`filePath\`: The path to the file.
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
 - \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
+
+**Examples:**
+\`\`\`typescript // src/components/Button.tsx
+...
+\`\`\`
+\`\`\`typescript // "src/components/My Component.tsx" new-unified
+...
+\`\`\`
 
 ---
 
@@ -74,7 +82,10 @@ Repeat this block for each replacement.
 
 -   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
 -   **Deleting a file**:
-    \`\`\`typescript // {filePath}
+    \`\`\`typescript // path/to/file.ts
+    //TODO: delete this file
+    \`\`\`
+    \`\`\`typescript // "path/to/My Old Component.ts"
     //TODO: delete this file
     \`\`\`
 

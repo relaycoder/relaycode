@@ -57,7 +57,7 @@ changeSummary: ${JSON.stringify(changeSummary)}
 export const createFileBlock = (filePath: string, content: string, patchStrategy?: PatchStrategy): string => {
     const strategyString = patchStrategy ? ` ${patchStrategy}` : '';
     return `
-\`\`\`typescript // {${filePath}}${strategyString}
+\`\`\`typescript // ${filePath}${strategyString}
 // START
 
 ${content}
@@ -69,7 +69,7 @@ ${content}
 
 export const createDeleteFileBlock = (filePath: string): string => {
     return `
-\`\`\`typescript // {${filePath}}
+\`\`\`typescript // ${filePath}
 //TODO: delete this file
 \`\`\`
 `;
