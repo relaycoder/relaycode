@@ -8,13 +8,15 @@ type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
 
 // Custom clipboard reader that falls back to our local executable
-const createFallbackClipboardReader = (): ClipboardReader => {
+const createFallbackClipboardReader = (suppressWarnings = false): ClipboardReader => {
   return async () => {
     try {
       // Try the clipboardy module first
       return await clipboardy.read();
     } catch (error) {
-      logger.warn('Clipboardy module failed, trying fallback executable');
+      if (!suppressWarnings) {
+        logger.warn('Clipboardy module failed, trying fallback executable');
+      }
       
       // Fall back to our local executable
       try {
@@ -29,6 +31,22 @@ const createFallbackClipboardReader = (): ClipboardReader => {
       
       // If we got here, both methods failed
       throw error;
+    }
+  };
+};
+
+// Direct Windows clipboard reader that uses the executable directly
+const createDirectWindowsClipboardReader = (): ClipboardReader => {
+  return async () => {
+    try {
+      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
+      if (fs.existsSync(localExePath)) {
+        const result = execSync(`"${localExePath}" --paste`, { encoding: 'utf8' });
+        return result;
+      }
+      throw new Error('Windows clipboard executable not found');
+    } catch (error) {
+      throw new Error(`Clipboard read failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 };
@@ -83,9 +101,10 @@ export const createClipboardWatcher = (
   // Ensure clipboard executable exists before starting
   ensureClipboardExecutable();
   
-  // Use our fallback reader if on Windows, otherwise use the provided reader or clipboardy
+  // On Windows, use the direct Windows reader
+  // Otherwise use the provided reader or clipboardy
   const clipboardReader = process.platform === 'win32' ? 
-    createFallbackClipboardReader() : 
+    createDirectWindowsClipboardReader() : 
     reader || clipboardy.read;
   
   let lastContent = '';
