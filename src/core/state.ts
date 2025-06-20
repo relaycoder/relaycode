@@ -49,35 +49,18 @@ export const writePendingState = async (cwd: string, state: StateFile): Promise<
 export const commitState = async (cwd: string, uuid: string): Promise<void> => {
   const pendingPath = getStateFilePath(cwd, uuid, true);
   const committedPath = getStateFilePath(cwd, uuid, false);
-  
+
   try {
-    // Read the pending state first to ensure we have the approved flag set correctly
-    const pendingContent = await fs.readFile(pendingPath, 'utf8');
-    const stateData = yaml.load(pendingContent) as StateFile;
-    
-    // Ensure approved flag is set to true
-    const finalState: StateFile = { ...stateData, approved: true };
-    const finalContent = yaml.dump(finalState);
-    
-    // Write directly to the committed path
-    await fs.writeFile(committedPath, finalContent, 'utf8');
-    
-    // Then delete the pending file
-    await fs.unlink(pendingPath);
+    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
+    await fs.rename(pendingPath, committedPath);
   } catch (error) {
-    // If an error occurs, try the old rename approach as fallback
-    console.warn("Error in optimized commit process, falling back to rename:", error);
-    try {
-      await fs.rename(pendingPath, committedPath);
-    } catch (renameError) {
-      // If rename fails (e.g., across filesystems), fall back to copy+delete
-      if (renameError instanceof Error && 'code' in renameError && renameError.code === 'EXDEV') {
-        const content = await fs.readFile(pendingPath, 'utf8');
-        await fs.writeFile(committedPath, content, 'utf8');
-        await fs.unlink(pendingPath);
-      } else {
-        throw renameError;
-      }
+    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(pendingPath, committedPath);
+      await fs.unlink(pendingPath);
+    } else {
+      // Re-throw other errors
+      throw error;
     }
   }
 };

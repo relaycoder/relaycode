@@ -1,22 +1,235 @@
-Hello! I see you're running into some test failures. I can certainly help you fix those. Based on the test output, it looks like there are issues in the initialization command's output, and a more significant logic error in how patches are applied, especially for the `multi-search-replace` strategy.
+Of course! I can help you refactor your codebase to be more concise and maintainable. I've identified a few areas where we can improve code clarity, reduce redundancy, and even fix a potential race condition, all while keeping the existing functionality intact.
 
-Here are the changes to get your tests passing and correct the underlying issues:
+Here are the optimized code changes:
 
-### 1. Fixing the Patch Application Logic
+```typescript
+// src/commands/init.ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
 
-The core issue is that the transaction processor was incorrectly writing patch content directly to files instead of using the `applyOperations` executor, which knows how to handle different patch strategies. I'll correct `src/core/transaction.ts` to use the executor and then recalculate statistics based on the result.
+const getSystemPrompt = (projectId: string): string => `
+✅ relaycode has been initialized for this project.
 
-### 2. Updating the Test Mock
+IMPORTANT: For relaycode to work, you must configure your AI assistant.
+Copy the entire text below and paste it into your LLM's "System Prompt"
+or "Custom Instructions" section.
+---------------------------------------------------------------------------
 
-The mock for the `diff-apply` library in `test/e2e/patcher.test.ts` didn't match the actual module's structure, which would have caused issues even after fixing the transaction logic. I'll update the mock to reflect the real structure.
+You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
 
-### 3. Adjusting the Initialization Test
+**Syntax:**
+\`\`\`typescript // {filePath} {patchStrategy}
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file.
+- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
 
-The `init` command's system prompt has been updated, but the corresponding test was checking for an obsolete string. I'll update the test to assert against the current prompt.
+---
 
-Here are the necessary code changes:
+### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
 
-```typescript // src/core/transaction.ts
+Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
+
+**Diff Format:**
+1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
+2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
+3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
+4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
+
+**Example:**
+\`\`\`diff
+--- src/utils.ts
++++ src/utils.ts
+@@ ... @@
+    function calculateTotal(items: number[]): number {
+-      return items.reduce((sum, item) => {
+-        return sum + item;
+-      }, 0);
++      const total = items.reduce((sum, item) => {
++        return sum + item * 1.1;  // Add 10% markup
++      }, 0);
++      return Math.round(total * 100) / 100;  // Round to 2 decimal places
++    }
+\`\`\`
+
+---
+
+### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
+
+Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
+
+**Diff Format:**
+Repeat this block for each replacement.
+\`\`\`diff
+<<<<<<< SEARCH
+:start_line: (optional)
+:end_line: (optional)
+-------
+[exact content to find including whitespace]
+=======
+[new content to replace with]
+>>>>>>> REPLACE
+\`\`\`
+
+---
+
+### Other Operations
+
+-   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
+-   **Deleting a file**:
+    \`\`\`typescript // {filePath}
+    //TODO: delete this file
+    \`\`\`
+
+---
+
+### Final Steps
+
+1.  Add your step-by-step reasoning in plain text before each code block.
+2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
+
+    \`\`\`yaml
+    projectId: ${projectId}
+    uuid: (generate a random uuid)
+    changeSummary:
+      - edit: src/main.ts
+      - new: src/components/Button.tsx
+      - delete: src/utils/old-helper.ts
+    \`\`\`
+---------------------------------------------------------------------------
+You are now ready to run 'relay watch' in your terminal.
+`;
+
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
+    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+
+    try {
+        let content = await fs.readFile(gitignorePath, 'utf-8');
+        if (!content.includes(STATE_DIRECTORY_NAME)) {
+            content += entry;
+            await fs.writeFile(gitignorePath, content);
+            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            await fs.writeFile(gitignorePath, entry.trim());
+            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+        } else {
+            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+};
+
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    logger.info('Initializing relaycode in this project...');
+
+    const config = await findConfig(cwd);
+    if (config) {
+        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.log(getSystemPrompt(config.projectId));
+        return;
+    }
+    
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
+    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
+    
+    await ensureStateDirExists(cwd);
+    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
+
+    await updateGitignore(cwd);
+
+    logger.log(getSystemPrompt(projectId));
+};
+```
+```typescript
+// src/core/state.ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { StateFile, StateFileSchema } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+
+const stateDirectoryCache = new Map<string, boolean>();
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd), fileName);
+};
+
+// Ensure state directory exists with caching for performance
+const ensureStateDirectory = async (cwd: string): Promise<void> => {
+  const dirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    stateDirectoryCache.set(dirPath, true);
+  }
+};
+
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    // Only check for a committed state file.
+    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+    await fs.access(committedPath);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
+  const validatedState = StateFileSchema.parse(state);
+  const yamlString = yaml.dump(validatedState);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  
+  // Ensure directory exists (cached)
+  await ensureStateDirectory(cwd);
+  
+  // Write file
+  await fs.writeFile(filePath, yamlString, 'utf-8');
+};
+
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
+
+  try {
+    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
+    await fs.rename(pendingPath, committedPath);
+  } catch (error) {
+    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(pendingPath, committedPath);
+      await fs.unlink(pendingPath);
+    } else {
+      // Re-throw other errors
+      throw error;
+    }
+  }
+};
+
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  try {
+    await fs.unlink(pendingPath);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // Already gone, that's fine.
+      return;
+    }
+    throw error;
+  }
+};
+```
+```typescript
+// src/core/transaction.ts
 // src/core/transaction.ts
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot } from '../types';
 import { logger } from '../utils/logger';
@@ -173,11 +386,10 @@ const createTransaction = (deps: TransactionDependencies) => {
     if (isApproved) {
         logger.log('  - Committing changes...');
         const finalState: StateFile = { ...stateFile, approved: true };
-        // Update pending state and commit in parallel
-        await Promise.all([
-          writePendingState(cwd, finalState),
-          commitState(cwd, uuid)
-        ]);
+        // Update pending state with approved: true, then commit (rename) the file.
+        // This is now sequential to prevent a race condition.
+        await writePendingState(cwd, finalState);
+        await commitState(cwd, uuid);
 
         const duration = performance.now() - startTime;
         const totalSucceeded = opStats.length;
@@ -245,316 +457,4 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     const transaction = createTransaction({ config, parsedResponse, prompter: options?.prompter, cwd });
     await transaction.run();
 };
-```
-```typescript // test/e2e/init.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { initCommand } from '../../src/commands/init';
-import { setupTestDirectory, TestDir, createTestFile } from '../test.util';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
-import { ConfigSchema } from '../../src/types';
-
-describe('e2e/init', () => {
-    let testDir: TestDir;
-
-    beforeEach(async () => {
-        testDir = await setupTestDirectory();
-    });
-
-    afterEach(async () => {
-        await testDir.cleanup();
-    });
-
-    it('should create config file with correct defaults, state directory, and .gitignore', async () => {
-        // Suppress console output for this test
-        const originalLog = console.log;
-        console.log = () => {};
-
-        await initCommand(testDir.path);
-
-        console.log = originalLog; // Restore console output
-
-        // Check for config file
-        const configPath = path.join(testDir.path, CONFIG_FILE_NAME);
-        const configExists = await fs.access(configPath).then(() => true).catch(() => false);
-        expect(configExists).toBe(true);
-
-        const configContent = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(configContent);
-        
-        // Validate against schema to check defaults
-        const parsedConfig = ConfigSchema.parse(config);
-        expect(parsedConfig.projectId).toBe(path.basename(testDir.path));
-        expect(parsedConfig.clipboardPollInterval).toBe(2000);
-        expect(parsedConfig.approval).toBe('yes');
-        expect(parsedConfig.linter).toBe('bun tsc --noEmit');
-
-        // Check for state directory
-        const stateDirPath = path.join(testDir.path, STATE_DIRECTORY_NAME);
-        const stateDirExists = await fs.stat(stateDirPath).then(s => s.isDirectory()).catch(() => false);
-        expect(stateDirExists).toBe(true);
-
-        // Check for .gitignore
-        const gitignorePath = path.join(testDir.path, GITIGNORE_FILE_NAME);
-        const gitignoreExists = await fs.access(gitignorePath).then(() => true).catch(() => false);
-        expect(gitignoreExists).toBe(true);
-
-        const gitignoreContent = await fs.readFile(gitignorePath, 'utf-8');
-        expect(gitignoreContent).toContain(`/${STATE_DIRECTORY_NAME}/`);
-    });
-
-    it('should use package.json name for projectId if available', async () => {
-        const pkgName = 'my-awesome-project';
-        await createTestFile(testDir.path, 'package.json', JSON.stringify({ name: pkgName }));
-
-        const originalLog = console.log;
-        console.log = () => {};
-        
-        await initCommand(testDir.path);
-
-        console.log = originalLog;
-
-        const configPath = path.join(testDir.path, CONFIG_FILE_NAME);
-        const configContent = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(configContent);
-        expect(config.projectId).toBe(pkgName);
-    });
-
-    it('should append to existing .gitignore', async () => {
-        const initialContent = '# Existing rules\nnode_modules/';
-        await createTestFile(testDir.path, GITIGNORE_FILE_NAME, initialContent);
-
-        const originalLog = console.log;
-        console.log = () => {};
-
-        await initCommand(testDir.path);
-
-        console.log = originalLog;
-
-        const gitignoreContent = await fs.readFile(path.join(testDir.path, GITIGNORE_FILE_NAME), 'utf-8');
-        expect(gitignoreContent).toContain(initialContent);
-        expect(gitignoreContent).toContain(`/${STATE_DIRECTORY_NAME}/`);
-    });
-
-    it('should not add entry to .gitignore if it already exists', async () => {
-        const entry = `/${STATE_DIRECTORY_NAME}/`;
-        const initialContent = `# Existing rules\n${entry}`;
-        await createTestFile(testDir.path, GITIGNORE_FILE_NAME, initialContent);
-
-        const originalLog = console.log;
-        console.log = () => {};
-
-        await initCommand(testDir.path);
-
-        console.log = originalLog;
-
-        const gitignoreContent = await fs.readFile(path.join(testDir.path, GITIGNORE_FILE_NAME), 'utf-8');
-        const occurrences = (gitignoreContent.match(new RegExp(entry, 'g')) || []).length;
-        expect(occurrences).toBe(1);
-    });
-
-    it('should not overwrite an existing relaycode.config.json', async () => {
-        const customConfig = { projectId: 'custom', customField: true };
-        await createTestFile(testDir.path, CONFIG_FILE_NAME, JSON.stringify(customConfig));
-
-        const originalLog = console.log;
-        console.log = () => {};
-
-        await initCommand(testDir.path);
-
-        console.log = originalLog;
-
-        const configContent = await fs.readFile(path.join(testDir.path, CONFIG_FILE_NAME), 'utf-8');
-        const config = JSON.parse(configContent);
-        expect(config.projectId).toBe('custom');
-        expect(config.customField).toBe(true);
-    });
-
-    it('should output the system prompt with the correct project ID', async () => {
-        const capturedOutput: string[] = [];
-        const originalLog = console.log;
-        console.log = (message: string) => capturedOutput.push(message);
-
-        const pkgName = 'my-prompt-project';
-        await createTestFile(testDir.path, 'package.json', JSON.stringify({ name: pkgName }));
-
-        await initCommand(testDir.path);
-
-        console.log = originalLog; // Restore
-
-        const outputString = capturedOutput.join('\n');
-        expect(outputString).toContain(`projectId: ${pkgName}`);
-        expect(outputString).toContain('You are an expert AI programmer.');
-    });
-});
-```
-```typescript // test/e2e/patcher.test.ts
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { processPatch } from '../../src/core/transaction';
-import { parseLLMResponse } from '../../src/core/parser';
-import { setupTestDirectory, TestDir, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
-
-// Mock the diff-apply library
-mock.module('diff-apply', () => {
-    const multiSearchReplaceLogic = (params: { originalContent: string; diffContent: string; }): { success: boolean; content: string; error?: string; } => {
-        let modifiedContent = params.originalContent;
-        const blocks = params.diffContent.split('>>>>>>> REPLACE').filter(b => b.trim());
-        
-        for (const block of blocks) {
-            const parts = block.split('=======');
-            if (parts.length !== 2) return { success: false, content: params.originalContent, error: 'Invalid block' };
-
-            const searchBlock = parts[0];
-            let replaceContent = parts[1];
-
-            if (searchBlock === undefined || replaceContent === undefined) {
-                return { success: false, content: params.originalContent, error: 'Invalid block structure' };
-            }
-
-            const searchPart = searchBlock.split('<<<<<<< SEARCH')[1];
-            if (!searchPart) return { success: false, content: params.originalContent, error: 'Invalid search block' };
-            
-            const searchContentPart = searchPart.split('-------')[1];
-            if (searchContentPart === undefined) return { success: false, content: params.originalContent, error: 'Invalid search block content' };
-
-            let searchContent = searchContentPart;
-            if (searchContent.startsWith('\n')) searchContent = searchContent.substring(1);
-            if (searchContent.endsWith('\n')) searchContent = searchContent.slice(0, -1);
-            if (replaceContent.startsWith('\n')) replaceContent = replaceContent.substring(1);
-            if (replaceContent.endsWith('\n')) replaceContent = replaceContent.slice(0, -1);
-
-            if (modifiedContent.includes(searchContent)) {
-                modifiedContent = modifiedContent.replace(searchContent, replaceContent);
-            } else {
-                return { success: false, content: params.originalContent, error: 'Search content not found' };
-            }
-        }
-        return { success: true, content: modifiedContent };
-    };
-
-    return {
-        newUnifiedDiffStrategyService: {
-            newUnifiedDiffStrategyService: {
-                create: () => ({
-                    applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
-                })
-            }
-        },
-        multiSearchReplaceService: {
-            multiSearchReplaceService: {
-                applyDiff: async (params: { originalContent: string, diffContent: string }) => {
-                    return multiSearchReplaceLogic(params);
-                }
-            }
-        },
-        unifiedDiffService: {
-            unifiedDiffService: {
-                applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
-            }
-        }
-    };
-});
-
-
-describe('e2e/patcher', () => {
-    let testDir: TestDir;
-
-    beforeEach(async () => {
-        testDir = await setupTestDirectory();
-        // Suppress console output for cleaner test logs
-        global.console.info = () => {};
-        global.console.log = () => {};
-        global.console.warn = () => {};
-        global.console.error = () => {};
-        //@ts-ignore
-        global.console.success = () => {};
-    });
-
-    afterEach(async () => {
-        await testDir.cleanup();
-    });
-
-    it('should correctly apply a patch using the multi-search-replace strategy', async () => {
-        const config = await createTestConfig(testDir.path);
-        const testFile = 'src/config.js';
-        const originalContent = `
-const config = {
-    port: 3000,
-    host: 'localhost',
-    enableLogging: true,
-};
-`;
-        await createTestFile(testDir.path, testFile, originalContent);
-
-        const diffContent = `
-<<<<<<< SEARCH
--------
-    port: 3000,
-=======
-    port: 8080,
->>>>>>> REPLACE
-<<<<<<< SEARCH
--------
-    enableLogging: true,
-=======
-    enableLogging: false,
->>>>>>> REPLACE
-`;
-        
-        const uuid = uuidv4();
-        const llmResponse = createFileBlock(testFile, diffContent, 'multi-search-replace') + 
-                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
-
-        const parsedResponse = parseLLMResponse(llmResponse);
-        expect(parsedResponse).not.toBeNull();
-
-        await processPatch(config, parsedResponse!, { cwd: testDir.path });
-
-        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
-        
-        const expectedContent = `
-const config = {
-    port: 8080,
-    host: 'localhost',
-    enableLogging: false,
-};
-`;
-        expect(finalContent.replace(/\s/g, '')).toBe(expectedContent.replace(/\s/g, ''));
-    });
-
-    it('should fail transaction if multi-search-replace content is not found', async () => {
-        const config = await createTestConfig(testDir.path);
-        const testFile = 'src/index.js';
-        const originalContent = 'const version = 1;';
-        await createTestFile(testDir.path, testFile, originalContent);
-
-        const diffContent = `
-<<<<<<< SEARCH
--------
-const version = 2; // This content does not exist
-=======
-const version = 3;
->>>>>>> REPLACE
-`;
-        const uuid = uuidv4();
-        const llmResponse = createFileBlock(testFile, diffContent, 'multi-search-replace') + 
-                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
-        
-        const parsedResponse = parseLLMResponse(llmResponse)!;
-
-        await processPatch(config, parsedResponse, { cwd: testDir.path });
-
-        // The file content should remain unchanged
-        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
-        expect(finalContent).toBe(originalContent);
-
-        // No state file should have been committed
-        const stateFileExists = await fs.access(path.join(testDir.path, '.relaycode', `${uuid}.yml`)).then(() => true).catch(() => false);
-        expect(stateFileExists).toBe(false);
-    });
-});
 ```

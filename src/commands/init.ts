@@ -121,13 +121,10 @@ const updateGitignore = async (cwd: string): Promise<void> => {
 export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
     logger.info('Initializing relaycode in this project...');
 
-    const existingConfig = await findConfig(cwd);
-    if (existingConfig) {
+    const config = await findConfig(cwd);
+    if (config) {
         logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        const config = await findConfig(cwd);
-        if(config){
-            logger.log(getSystemPrompt(config.projectId));
-        }
+        logger.log(getSystemPrompt(config.projectId));
         return;
     }
     

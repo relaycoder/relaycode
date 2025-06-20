@@ -154,11 +154,10 @@ const createTransaction = (deps: TransactionDependencies) => {
     if (isApproved) {
         logger.log('  - Committing changes...');
         const finalState: StateFile = { ...stateFile, approved: true };
-        // Update pending state and commit in parallel
-        await Promise.all([
-          writePendingState(cwd, finalState),
-          commitState(cwd, uuid)
-        ]);
+        // Update pending state with approved: true, then commit (rename) the file.
+        // This is now sequential to prevent a race condition.
+        await writePendingState(cwd, finalState);
+        await commitState(cwd, uuid);
 
         const duration = performance.now() - startTime;
         const totalSucceeded = opStats.length;
