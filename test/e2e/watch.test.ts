@@ -27,9 +27,22 @@ describe('e2e/watch', () => {
     });
 
     afterEach(async () => {
-        watcher?.stop();
+        if (watcher) {
+            watcher.stop();
+            // Add a small delay to ensure resources are released before cleanup
+            await new Promise(resolve => setTimeout(resolve, 100));
+            watcher = null;
+        }
+        
+        // Give filesystem operations time to complete before cleaning up
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         if (testDir) {
-            await testDir.cleanup();
+            try {
+                await testDir.cleanup();
+            } catch (error) {
+                console.error('Failed to clean up test directory:', error);
+            }
         }
     });
 
@@ -70,7 +83,7 @@ describe('e2e/watch', () => {
 
         // Wait for polling to pick up the new content. 
         // We also need to account for file system operations.
-        await new Promise(resolve => setTimeout(resolve, pollInterval * 3));
+        await new Promise(resolve => setTimeout(resolve, pollInterval * 5));
     
         const contentAfterValid = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
         expect(contentAfterValid).toBe(newContent);

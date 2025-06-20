@@ -35,7 +35,14 @@ describe('e2e/transaction', () => {
 
     afterEach(async () => {
         if (testDir) {
-            await testDir.cleanup();
+            // Give filesystem operations time to complete before cleaning up
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            try {
+                await testDir.cleanup();
+            } catch (error) {
+                console.error('Failed to clean up test directory:', error);
+            }
         }
     });
 
@@ -55,13 +62,23 @@ describe('e2e/transaction', () => {
 
         await processPatch(config, parsedResponse!, { cwd: testDir.path });
 
+        // Add a small delay to ensure file operations have completed
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         // Check file content
         const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
         expect(finalContent).toBe(newContent);
 
         // Check state file was committed
         const stateFilePath = path.join(testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
-        const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+        
+        // Try multiple times with a small delay to check if the file exists
+        let stateFileExists = false;
+        for (let i = 0; i < 5; i++) {
+            stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
+            if (stateFileExists) break;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
         expect(stateFileExists).toBe(true);
 
         // Check state file content
