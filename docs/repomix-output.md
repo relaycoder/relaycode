@@ -17,6 +17,7 @@ src/index.ts
 src/types.ts
 src/utils/constants.ts
 src/utils/logger.ts
+src/utils/notifier.ts
 src/utils/prompt.ts
 src/utils/shell.ts
 test/e2e/init.test.ts
@@ -90,6 +91,63 @@ export const logger = {
 };
 ````
 
+## File: src/utils/notifier.ts
+````typescript
+const notifier = require('toasted-notifier');
+
+const appName = 'Relaycode';
+
+// This is a "fire-and-forget" utility. If notifications fail for any reason
+// (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
+const sendNotification = (options: { title: string; message: string; }) => {
+    try {
+        notifier.notify(
+            {
+                title: options.title,
+                message: options.message,
+                sound: false, // Keep it quiet by default
+                wait: false,
+            },
+            (err: any) => {
+                if (err) {
+                    // Silently ignore errors. This is a non-critical feature.
+                }
+            }
+        );
+    } catch (err) {
+        // Silently ignore errors.
+    }
+};
+
+export const notifyPatchDetected = (projectId: string) => {
+    sendNotification({
+        title: appName,
+        message: `New patch detected for project \`${projectId}\`.`,
+    });
+};
+
+export const notifyApprovalRequired = (projectId: string) => {
+    sendNotification({
+        title: appName,
+        message: `Action required to approve changes for \`${projectId}\`.`,
+    });
+};
+
+export const notifySuccess = (uuid: string) => {
+    sendNotification({
+        title: appName,
+        message: `Patch \`${uuid}\` applied successfully.`,
+    });
+};
+
+export const notifyFailure = (uuid: string) => {
+    sendNotification({
+        title: appName,
+        message: `Patch \`${uuid}\` failed and was rolled back.`,
+    });
+};
+````
+
 ## File: src/utils/prompt.ts
 ````typescript
 import { logger } from './logger';
@@ -110,43 +168,6 @@ export const getConfirmation = (question: string): Promise<boolean> => {
       process.stdin.removeListener('data', onData);
     };
     process.stdin.on('data', onData);
-  });
-};
-````
-
-## File: src/commands/watch.ts
-````typescript
-import { findConfig } from '../core/config';
-import { createClipboardWatcher } from '../core/clipboard';
-import { parseLLMResponse } from '../core/parser';
-import { processPatch } from '../core/transaction';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME } from '../utils/constants';
-
-export const watchCommand = async (): Promise<void> => {
-  const config = await findConfig();
-
-  if (!config) {
-    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-    logger.info("Please run 'relay init' to create one.");
-    process.exit(1);
-  }
-  
-  logger.success('Configuration loaded. Starting relaycode watch...');
-
-  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
-    logger.info('New clipboard content detected. Attempting to parse...');
-    const parsedResponse = parseLLMResponse(content);
-
-    if (!parsedResponse) {
-      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
-      return;
-    }
-    
-    logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse);
-    logger.info('--------------------------------------------------');
-    logger.info('Watching for next patch...');
   });
 };
 ````
@@ -294,6 +315,45 @@ export const ShellCommandResultSchema = z.object({
     exitCode: z.number().nullable(),
 });
 export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
+````
+
+## File: src/commands/watch.ts
+````typescript
+import { findConfig } from '../core/config';
+import { createClipboardWatcher } from '../core/clipboard';
+import { parseLLMResponse } from '../core/parser';
+import { processPatch } from '../core/transaction';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME } from '../utils/constants';
+import { notifyPatchDetected } from '../utils/notifier';
+
+export const watchCommand = async (): Promise<void> => {
+  const config = await findConfig();
+
+  if (!config) {
+    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+    logger.info("Please run 'relay init' to create one.");
+    process.exit(1);
+  }
+  
+  logger.success('Configuration loaded. Starting relaycode watch...');
+
+  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    logger.info('New clipboard content detected. Attempting to parse...');
+    const parsedResponse = parseLLMResponse(content);
+
+    if (!parsedResponse) {
+      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
+      return;
+    }
+    
+    notifyPatchDetected(config.projectId);
+    logger.success('Valid patch format detected. Processing...');
+    await processPatch(config, parsedResponse);
+    logger.info('--------------------------------------------------');
+    logger.info('Watching for next patch...');
+  });
+};
 ````
 
 ## File: src/core/clipboard.ts
@@ -1156,34 +1216,6 @@ export const createDeleteFileBlock = (filePath: string): string => {
 };
 ````
 
-## File: package.json
-````json
-{
-  "name": "relaycode",
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "test": "bun test",
-    "dev": "bun run src/index.ts"
-  },
-  "dependencies": {
-    "chalk": "^5.3.0",
-    "clipboardy": "^4.0.0",
-    "commander": "^12.0.0",
-    "diff-apply": "^1.0.0",
-    "js-yaml": "^4.1.0",
-    "uuid": "^9.0.0",
-    "zod": "^3.22.4"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/js-yaml": "^4.0.9",
-    "@types/uuid": "^9.0.8",
-    "typescript": "^5.0.0"
-  }
-}
-````
-
 ## File: src/core/executor.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -1565,6 +1597,35 @@ describe('e2e/init', () => {
         }
     });
 });
+````
+
+## File: package.json
+````json
+{
+  "name": "relaycode",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "dev": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "clipboardy": "^4.0.0",
+    "commander": "^12.0.0",
+    "diff-apply": "^1.0.0",
+    "js-yaml": "^4.1.0",
+    "toasted-notifier": "^10.1.0",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.0.0"
+  }
+}
 ````
 
 ## File: test/unit/parser.test.ts
@@ -2385,6 +2446,7 @@ import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
+import { notifyApprovalRequired, notifyFailure, notifySuccess } from '../utils/notifier';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -2444,6 +2506,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
         logger.success('  - Files restored to original state.');
         await deletePendingState(cwd, uuid);
         logger.success(`↩️ Transaction ${uuid} rolled back.`);
+        notifyFailure(uuid);
     } catch (error) {
         logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
         // Do not rethrow; we're already in a final error handling state.
@@ -2524,15 +2587,21 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
         const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
         
-        const isApproved = canAutoApprove
-            ? (logger.success('  - Changes automatically approved based on your configuration.'), true)
-            : await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        let isApproved: boolean;
+        if (canAutoApprove) {
+            logger.success('  - Changes automatically approved based on your configuration.');
+            isApproved = true;
+        } else {
+            notifyApprovalRequired(config.projectId);
+            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        }
 
         if (isApproved) {
             stateFile.approved = true;
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations, opStats);
+            notifySuccess(uuid);
         } else {
             throw new Error('Changes were not approved.');
         }

@@ -204,3 +204,21 @@ _________________________________________________
 
 why ```typescript // {src/components/UserProfile.tsx} new-unified contains curly {} in path? should be without it
 
+___________________________________________
+
+
+implement. 
+
+#### New Operation: File Rename/Move
+-   **What:** Add a dedicated `rename` operation.
+-   **Why:** While a rename can be accomplished with a `delete` and a `write`, a dedicated operation is cleaner and more explicit. It allows the state management and snapshot system to track file identity more accurately, leading to more robust rollbacks.
+-   **Syntax Idea:**
+
+
+-   **Renaming/Moving a file**:
+    \`\`\`typescript // path/to/old-file.ts
+    //TODO: rename to path/to/new-file.ts
+    \`\`\`
+    \`\`\`typescript // "path/to/My Old Component.ts"
+    //TODO: rename to "path/to/My New Component.ts"
+    \`\`\`

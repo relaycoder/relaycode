@@ -27,7 +27,7 @@
 -   **Implementation:** This would require careful security considerations. It should be off by default and enabled via a config flag (`allowShellCommands: true`) with a prominent warning. The snapshot/rollback logic would need to handle this new operation type (e.g., by attempting to run a corresponding "undo" command if provided).
 
 
-#### New Operation: File Rename/Move
+#### DONE: New Operation: File Rename/Move
 -   **What:** Add a dedicated `rename` operation.
 -   **Why:** While a rename can be accomplished with a `delete` and a `write`, a dedicated operation is cleaner and more explicit. It allows the state management and snapshot system to track file identity more accurately, leading to more robust rollbacks.
 -   **Syntax Idea:**
@@ -48,7 +48,7 @@
 -   **Why:** This is a transformative feature. It aligns Relaycode's atomic transactions with Git's atomic commits, making history management clean and idiomatic. It eliminates any risk of dirtying the main working branch and allows for easy review of changes using standard `git` and platform tools (GitHub PRs, etc.).
 
 
-#### System-Level Notifications
+#### DONE: System-Level Notifications
 -   **What:** Use a cross-platform library (like `node-notifier`) to send system notifications at key moments.
 -   **Why:** The `watch` command requires the developer to keep an eye on the terminal. System notifications provide crucial feedback even when the terminal is not in focus.
     -   **On new patch detected:** "Relaycode: New patch detected for project `my-app`."
