@@ -8,14 +8,6 @@ import { setupTestDirectory, TestDir, createTestConfig, createTestFile, LLM_RESP
 
 // Mock the diff-apply library
 mock.module('diff-apply', () => {
-    const createMockStrategy = (logic: (p: { originalContent: string; diffContent: string; }) => { success: boolean; content: string; error?: string; }) => ({
-        create: () => ({
-            applyDiff: async (params: { originalContent: string, diffContent: string }) => {
-                return logic(params);
-            }
-        })
-    });
-
     const multiSearchReplaceLogic = (params: { originalContent: string; diffContent: string; }): { success: boolean; content: string; error?: string; } => {
         let modifiedContent = params.originalContent;
         const blocks = params.diffContent.split('>>>>>>> REPLACE').filter(b => b.trim());
@@ -38,7 +30,7 @@ mock.module('diff-apply', () => {
             if (searchContentPart === undefined) return { success: false, content: params.originalContent, error: 'Invalid search block content' };
 
             let searchContent = searchContentPart;
-             if (searchContent.startsWith('\n')) searchContent = searchContent.substring(1);
+            if (searchContent.startsWith('\n')) searchContent = searchContent.substring(1);
             if (searchContent.endsWith('\n')) searchContent = searchContent.slice(0, -1);
             if (replaceContent.startsWith('\n')) replaceContent = replaceContent.substring(1);
             if (replaceContent.endsWith('\n')) replaceContent = replaceContent.slice(0, -1);
@@ -53,9 +45,25 @@ mock.module('diff-apply', () => {
     };
 
     return {
-        newUnifiedDiffStrategyService: createMockStrategy(p => ({ success: false, content: p.originalContent, error: 'Not implemented' })),
-        multiSearchReplaceService: createMockStrategy(multiSearchReplaceLogic),
-        unifiedDiffService: createMockStrategy(p => ({ success: false, content: p.originalContent, error: 'Not implemented' })),
+        newUnifiedDiffStrategyService: {
+            newUnifiedDiffStrategyService: {
+                create: () => ({
+                    applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
+                })
+            }
+        },
+        multiSearchReplaceService: {
+            multiSearchReplaceService: {
+                applyDiff: async (params: { originalContent: string, diffContent: string }) => {
+                    return multiSearchReplaceLogic(params);
+                }
+            }
+        },
+        unifiedDiffService: {
+            unifiedDiffService: {
+                applyDiff: async (p: any) => ({ success: false, content: p.originalContent, error: 'Not implemented' })
+            }
+        }
     };
 });
 

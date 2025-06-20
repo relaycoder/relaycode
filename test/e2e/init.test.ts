@@ -136,6 +136,6 @@ describe('e2e/init', () => {
 
         const outputString = capturedOutput.join('\n');
         expect(outputString).toContain(`projectId: ${pkgName}`);
-        expect(outputString).toContain('Code changes rules 1-6:');
+        expect(outputString).toContain('You are an expert AI programmer.');
     });
 });

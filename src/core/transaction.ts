@@ -2,7 +2,7 @@
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot } from '../types';
 import { logger } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
-import { createSnapshot, writeFileContent, deleteFile, restoreSnapshot } from './executor';
+import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
 
@@ -89,29 +89,24 @@ const createTransaction = (deps: TransactionDependencies) => {
       logger.success('  - Staged changes to .pending.yml file.');
       
       logger.log('  - Applying file operations...');
-      // Process operations in parallel for better performance
-      await Promise.all(operations.map(async op => {
-        if (op.type === 'write') {
-            const oldContent = snapshot[op.path];
-            await writeFileContent(op.path, op.content, cwd);
-            const { added, removed } = calculateLineChanges(oldContent ?? null, op.content);
-            opStats.push({ type: 'Written', path: op.path, added, removed });
-        } else { // op.type === 'delete'
-            const oldContent = snapshot[op.path];
-            await deleteFile(op.path, cwd);
-            const { added, removed } = calculateLineChanges(oldContent ?? null, '');
-            opStats.push({ type: 'Deleted', path: op.path, added, removed });
-        }
-      }));
-      
+      await applyOperations(operations, cwd);
       logger.success('File operations complete.');
-      opStats.forEach(stat => {
-        if (stat.type === 'Written') {
-          logger.success(`✔ Written: ${stat.path} (+${stat.added}, -${stat.removed})`);
-        } else {
-          logger.success(`✔ Deleted: ${stat.path}`);
+
+      const statPromises = operations.map(async op => {
+        const oldContent = snapshot[op.path] ?? null;
+        if (op.type === 'write') {
+            const newContent = await readFileContent(op.path, cwd);
+            const { added, removed } = calculateLineChanges(oldContent, newContent ?? '');
+            opStats.push({ type: 'Written', path: op.path, added, removed });
+            logger.success(`✔ Written: ${op.path} (+${added}, -${removed})`);
+        } else { // op.type === 'delete'
+            const { added, removed } = calculateLineChanges(oldContent, '');
+            opStats.push({ type: 'Deleted', path: op.path, added, removed });
+            logger.success(`✔ Deleted: ${op.path}`);
         }
       });
+      await Promise.all(statPromises);
+      
     } catch (error) {
       logger.error(`Failed to apply file operations: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
       try {
