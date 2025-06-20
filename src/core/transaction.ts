@@ -4,6 +4,7 @@ import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
+import { notifyApprovalRequired, notifyFailure, notifySuccess } from '../utils/notifier';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -63,6 +64,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
         logger.success('  - Files restored to original state.');
         await deletePendingState(cwd, uuid);
         logger.success(`↩️ Transaction ${uuid} rolled back.`);
+        notifyFailure(uuid);
     } catch (error) {
         logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
         // Do not rethrow; we're already in a final error handling state.
@@ -143,15 +145,21 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
         const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
         
-        const isApproved = canAutoApprove
-            ? (logger.success('  - Changes automatically approved based on your configuration.'), true)
-            : await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        let isApproved: boolean;
+        if (canAutoApprove) {
+            logger.success('  - Changes automatically approved based on your configuration.');
+            isApproved = true;
+        } else {
+            notifyApprovalRequired(config.projectId);
+            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        }
 
         if (isApproved) {
             stateFile.approved = true;
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations, opStats);
+            notifySuccess(uuid);
         } else {
             throw new Error('Changes were not approved.');
         }

@@ -4,6 +4,7 @@ import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import { CONFIG_FILE_NAME } from '../utils/constants';
+import { notifyPatchDetected } from '../utils/notifier';
 
 export const watchCommand = async (): Promise<void> => {
   const config = await findConfig();
@@ -25,6 +26,7 @@ export const watchCommand = async (): Promise<void> => {
       return;
     }
     
+    notifyPatchDetected(config.projectId);
     logger.success('Valid patch format detected. Processing...');
     await processPatch(config, parsedResponse);
     logger.info('--------------------------------------------------');
