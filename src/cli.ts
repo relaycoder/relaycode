@@ -12,7 +12,7 @@ program
 program
   .command('init')
   .description('Initializes relaycode in the current project.')
-  .action(initCommand);
+  .action(() => initCommand());
 
 program
   .command('watch')

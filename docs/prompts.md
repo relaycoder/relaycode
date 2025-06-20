@@ -222,3 +222,47 @@ implement.
     \`\`\`typescript // "path/to/My Old Component.ts"
     //TODO: rename to "path/to/My New Component.ts"
     \`\`\`
+
+
+    ________________________________
+
+    PS C:\Users\Realme Book\project\diff-apply> bun add -g relaycode
+bun add v1.2.16 (631e6748)
+
+installed relaycode@1.0.2 with binaries:
+ - relay
+
+67 packages installed [6.69s]
+PS C:\Users\Realme Book\project\diff-apply> relay
+Usage: relay [options] [command]
+
+A developer assistant that automates applying code changes from LLMs.
+
+Options:
+  -h, --help      display help for command
+
+Commands:
+  init            Initializes relaycode in the current project.
+  watch           Starts watching the clipboard for code changes to apply.
+  help [command]  display help for command
+PS C:\Users\Realme Book\project\diff-apply> relay init
+Initializing relaycode in this project...
+node:path:478
+      validateString(arg, 'path');
+      ^
+
+TypeError [ERR_INVALID_ARG_TYPE]: The "path" argument must be of type string. Received an instance of Object    
+    at Object.join (node:path:478:7)
+    at findConfig (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:11032:27)
+    at Command.initCommand (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:11699:24)
+    at Command.listener [as _actionHandler] (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:866:20)
+    at file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1334:67
+    at Command._chainOrCall (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1269:14)
+    at Command._parseCommand (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1334:29)
+    at file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1203:29
+    at Command._chainOrCall (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1269:14)
+    at Command._dispatchSubcommand (file:///C:/Users/Realme%20Book/.bun/install/global/node_modules/relaycode/dist/cli.js:1199:27) {
+  code: 'ERR_INVALID_ARG_TYPE'
+}
+
+Node.js v22.14.0

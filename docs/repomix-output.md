@@ -1,6 +1,3 @@
-This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
-The content has been processed where content has been formatted for parsing in markdown style.
-
 # Directory Structure
 ```
 package.json
@@ -864,9 +861,10 @@ export const deletePendingState = async (cwd: string, uuid: string): Promise<voi
 ````json
 {
   "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "lib": ["esnext"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
     "moduleResolution": "bundler",
     "strict": true,
     "declaration": true,
@@ -1094,7 +1092,7 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
 ````json
 {
   "name": "relaycode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
   "main": "./dist/index.js",
@@ -1114,26 +1112,27 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "bun run clean && bun tsc",
+    "build": "bun run clean && bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target node",
     "test": "bun test",
     "dev": "bun run src/cli.ts",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "chalk": "^5.3.0",
+    "chalk": "^5.4.1",
     "clipboardy": "^4.0.0",
-    "commander": "^12.0.0",
-    "diff-apply": "^1.0.0",
+    "commander": "^12.1.0",
+    "diff-apply": "^1.0.6",
     "js-yaml": "^4.1.0",
+    "relaycode": "^1.0.2",
     "toasted-notifier": "^10.1.0",
-    "uuid": "^9.0.0",
-    "zod": "^3.22.4"
+    "uuid": "^9.0.1",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/js-yaml": "^4.0.9",
     "@types/uuid": "^9.0.8",
-    "typescript": "^5.0.0"
+    "typescript": "^5.8.3"
   },
   "keywords": [
     "ai",
