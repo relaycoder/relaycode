@@ -1,10 +1,29 @@
 {
   "name": "relaycode",
   "version": "1.0.0",
+  "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "relay": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
+    "clean": "rm -rf dist",
+    "build": "bun run clean && bun tsc",
     "test": "bun test",
-    "dev": "bun run src/index.ts"
+    "dev": "bun run src/cli.ts",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "chalk": "^5.3.0",
@@ -21,5 +40,20 @@
     "@types/js-yaml": "^4.0.9",
     "@types/uuid": "^9.0.8",
     "typescript": "^5.0.0"
-  }
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "automation",
+    "codegen",
+    "developer-tool",
+    "cli"
+  ],
+  "author": "Relay Code",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/relaycoder/relaycode.git"
+  },
+  "homepage": "https://relay.code"
 }
