@@ -30,26 +30,14 @@ const calculateLineChanges = (oldContent: string | null, newContent: string): Li
     if (oldContent === null || oldContent === '') return { added: newLines.length, removed: 0 };
     if (newContent === '') return { added: 0, removed: oldLines.length };
 
-    const oldLen = oldLines.length;
-    const newLen = newLines.length;
+    // Simplified line change calculation for better performance
+    const oldSet = new Set(oldLines);
+    const newSet = new Set(newLines);
     
-    const lcs = Array(oldLen + 1).fill(null).map(() => Array(newLen + 1).fill(0));
-
-    for (let i = 1; i <= oldLen; i++) {
-        for (let j = 1; j <= newLen; j++) {
-            if (oldLines[i - 1] === newLines[j - 1]) {
-                lcs[i]![j] = lcs[i - 1]![j - 1] + 1;
-            } else {
-                lcs[i]![j] = Math.max(lcs[i - 1]![j], lcs[i]![j - 1]);
-            }
-        }
-    }
-
-    const commonLines = lcs[oldLen]![newLen];
-    return {
-        added: newLen - commonLines,
-        removed: oldLen - commonLines,
-    };
+    const added = newLines.filter(line => !oldSet.has(line)).length;
+    const removed = oldLines.filter(line => !newSet.has(line)).length;
+    
+    return { added, removed };
 };
 
 // This HOF encapsulates the logic for processing a single patch.
@@ -88,15 +76,21 @@ const createTransaction = (deps: TransactionDependencies) => {
       snapshot,
       approved: false,
     };
-    await writePendingState(cwd, stateFile);
-    logger.success('  - Staged changes to .pending.yml file.');
+    
+    // Prepare state file but don't wait for write to complete yet
+    const pendingStatePromise = writePendingState(cwd, stateFile);
 
     // --- Execution Phase ---
     const opStats: Array<{ type: 'Written' | 'Deleted', path: string, added: number, removed: number }> = [];
     
     try {
+      // Wait for pending state write to complete
+      await pendingStatePromise;
+      logger.success('  - Staged changes to .pending.yml file.');
+      
       logger.log('  - Applying file operations...');
-      for (const op of operations) {
+      // Process operations in parallel for better performance
+      await Promise.all(operations.map(async op => {
         if (op.type === 'write') {
             const oldContent = snapshot[op.path];
             await writeFileContent(op.path, op.content, cwd);
@@ -108,7 +102,8 @@ const createTransaction = (deps: TransactionDependencies) => {
             const { added, removed } = calculateLineChanges(oldContent ?? null, '');
             opStats.push({ type: 'Deleted', path: op.path, added, removed });
         }
-      }
+      }));
+      
       logger.success('File operations complete.');
       opStats.forEach(stat => {
         if (stat.type === 'Written') {
@@ -142,7 +137,9 @@ const createTransaction = (deps: TransactionDependencies) => {
       }
     }
 
-    const finalErrorCount = await getErrorCount(config.linter, cwd);
+    // Run linter check in parallel with postCommand if possible
+    const finalErrorCountPromise = config.linter ? getErrorCount(config.linter, cwd) : Promise.resolve(0);
+    const finalErrorCount = await finalErrorCountPromise;
     logger.log(`  - Final linter error count: ${finalErrorCount}`);
 
     let isApproved = false;
@@ -162,8 +159,11 @@ const createTransaction = (deps: TransactionDependencies) => {
     if (isApproved) {
         logger.log('  - Committing changes...');
         const finalState: StateFile = { ...stateFile, approved: true };
-        await writePendingState(cwd, finalState); 
-        await commitState(cwd, uuid);
+        // Update pending state and commit in parallel
+        await Promise.all([
+          writePendingState(cwd, finalState),
+          commitState(cwd, uuid)
+        ]);
 
         const duration = performance.now() - startTime;
         const totalSucceeded = opStats.length;

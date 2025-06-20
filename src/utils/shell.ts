@@ -1,44 +1,53 @@
-import { ShellCommandResult } from '../types';
+import { exec } from 'child_process';
+import path from 'path';
 
-export const executeShellCommand = async (command: string, cwd?: string): Promise<ShellCommandResult> => {
-  if (!command) {
-    return { stdout: '', stderr: '', exitCode: 0 };
-  }
-
-  // Using a shell to properly handle commands with quotes and other shell features.
-  const isWindows = process.platform === 'win32';
-  const shell = isWindows ? (process.env.COMSPEC || 'cmd.exe') : '/bin/sh';
-  const shellFlag = isWindows ? '/c' : '-c';
-  
-  const proc = Bun.spawn([shell, shellFlag, command], {
-    cwd: cwd || process.cwd(),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exitCode,
-  ]);
-  
-  return { stdout, stderr, exitCode };
+type ExecutionResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
 };
 
-export const getErrorCount = async (linterCommand: string, cwd?: string): Promise<number> => {
-    if (!linterCommand) return 0;
-    try {
-        const { stderr, stdout } = await executeShellCommand(linterCommand, cwd);
-        // A simple way to count errors. This could be made more sophisticated.
-        // For `tsc --noEmit`, errors are usually on stderr.
-        const output = stderr || stdout;
-        // Support both `tsc` (`... error TS...`) and `bun tsc` (`error: ...`)
-        const errorLines = output.split('\n').filter(
-            line => line.includes('error TS') || line.trim().toLowerCase().startsWith('error:')
-        ).length;
-        return errorLines;
-    } catch (e) {
-        // If the command itself fails to run, treat as a high number of errors.
-        return 999;
-    }
+export const executeShellCommand = (command: string, cwd = process.cwd()): Promise<ExecutionResult> => {
+  if (!command || command.trim() === '') {
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+  }
+
+  // Normalize path for Windows environments
+  const normalizedCwd = path.resolve(cwd);
+
+  return new Promise((resolve) => {
+    // On Windows, make sure to use cmd.exe or PowerShell to execute command
+    const isWindows = process.platform === 'win32';
+    const finalCommand = isWindows 
+      ? `powershell -Command "${command.replace(/"/g, '\\"')}"`
+      : command;
+      
+    console.log(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
+    
+    exec(finalCommand, { cwd: normalizedCwd }, (error, stdout, stderr) => {
+      const exitCode = error ? error.code || 1 : 0;
+      
+      resolve({
+        exitCode,
+        stdout: stdout.toString().trim(),
+        stderr: stderr.toString().trim(),
+      });
+    });
+  });
+};
+
+export const getErrorCount = async (linterCommand: string, cwd = process.cwd()): Promise<number> => {
+  if (!linterCommand || linterCommand.trim() === '') {
+    return 0;
+  }
+  
+  const { exitCode, stderr } = await executeShellCommand(linterCommand, cwd);
+  if (exitCode === 0) return 0;
+
+  // Try to extract a number of errors from stderr or assume 1 if non-zero exit code
+  const errorMatches = stderr.match(/(\d+) error/i);
+  if (errorMatches && errorMatches[1]) {
+    return parseInt(errorMatches[1], 10);
+  }
+  return exitCode === 0 ? 0 : 1;
 };

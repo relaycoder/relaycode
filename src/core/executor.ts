@@ -33,15 +33,17 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
 
 export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
   const snapshot: FileSnapshot = {};
-  for (const filePath of filePaths) {
+  
+  // Process file reads in parallel for better performance
+  const snapshotPromises = filePaths.map(async (filePath) => {
     try {
       const absolutePath = path.resolve(cwd, filePath);
       try {
         const content = await fs.readFile(absolutePath, 'utf-8');
-        snapshot[filePath] = content;
+        return { path: filePath, content };
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-          snapshot[filePath] = null; // File doesn't exist, which is fine.
+          return { path: filePath, content: null }; // File doesn't exist, which is fine.
         } else {
           throw error;
         }
@@ -50,42 +52,76 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
       console.error(`Error creating snapshot for ${filePath}:`, error);
       throw error;
     }
+  });
+  
+  const results = await Promise.all(snapshotPromises);
+  
+  // Combine results into snapshot object
+  for (const result of results) {
+    snapshot[result.path] = result.content;
   }
+  
   return snapshot;
 };
 
 export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
-  for (const op of operations) {
+  // Apply operations in parallel
+  await Promise.all(operations.map(op => {
     if (op.type === 'delete') {
-      await deleteFile(op.path, cwd);
+      return deleteFile(op.path, cwd);
     } else { // op.type === 'write'
-      await writeFileContent(op.path, op.content, cwd);
+      return writeFileContent(op.path, op.content, cwd);
+    }
+  }));
+};
+
+// Helper to check if a directory is empty
+const isDirectoryEmpty = async (dirPath: string): Promise<boolean> => {
+  try {
+    const files = await fs.readdir(dirPath);
+    return files.length === 0;
+  } catch (error) {
+    // If directory doesn't exist or is not accessible, consider it "not empty"
+    return false;
+  }
+};
+
+// Recursively remove all empty parent directories up to a limit
+const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): Promise<void> => {
+  if (!dirPath.startsWith(rootDir) || dirPath === rootDir) {
+    return;
+  }
+  
+  try {
+    const isEmpty = await isDirectoryEmpty(dirPath);
+    if (isEmpty) {
+      await fs.rmdir(dirPath);
+      // Recursively check parent directory
+      await removeEmptyParentDirectories(path.dirname(dirPath), rootDir);
+    }
+  } catch (error) {
+    // Ignore directory removal errors, but don't continue up the chain
+    if (!(error instanceof Error && 'code' in error && 
+        (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
+      console.warn(`Failed to clean up directory ${dirPath}:`, error);
     }
   }
 };
 
 export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = process.cwd()): Promise<void> => {
   const projectRoot = path.resolve(cwd);
+  const entries = Object.entries(snapshot);
+  const directoriesDeleted = new Set<string>();
 
-  for (const [filePath, content] of Object.entries(snapshot)) {
+  // First handle all file operations in parallel
+  await Promise.all(entries.map(async ([filePath, content]) => {
     const fullPath = path.resolve(cwd, filePath);
     try {
       if (content === null) {
         // If the file didn't exist in the snapshot, make sure it doesn't exist after restore
         try {
           await fs.unlink(fullPath);
-          // After deleting a file that was newly created, try to clean up empty parent directories.
-          let parentDir = path.dirname(fullPath);
-          // Keep traversing up until we hit the project root or a non-empty directory
-          while (parentDir.startsWith(projectRoot) && parentDir !== projectRoot) {
-            const files = await fs.readdir(parentDir);
-            if (files.length === 0) {
-              await fs.rmdir(parentDir);
-              parentDir = path.dirname(parentDir);
-            } else {
-              break; // Stop if directory is not empty
-            }
-          }
+          directoriesDeleted.add(path.dirname(fullPath));
         } catch (error) {
           if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
             // File or directory already doesn't exist, which is fine
@@ -105,5 +141,15 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
       console.error(`Failed to restore ${filePath}:`, error);
       throw error;
     }
+  }));
+  
+  // After all files are processed, clean up empty directories
+  // Sort directories by depth (deepest first) to clean up nested empty dirs properly
+  const sortedDirs = Array.from(directoriesDeleted)
+    .sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
+  
+  // Process each directory that had files deleted
+  for (const dir of sortedDirs) {
+    await removeEmptyParentDirectories(dir, projectRoot);
   }
 };

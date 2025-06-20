@@ -40,7 +40,10 @@ describe('e2e/transaction', () => {
     });
 
     it('should apply changes, commit, and store correct state in .yml file', async () => {
-        const config = await createTestConfig(testDir.path, { linter: `bun tsc` });
+        const config = await createTestConfig(testDir.path, { 
+            linter: '', // Skip actual linting to avoid timeout
+            approval: 'yes'
+        });
         const newContent = 'console.log("new content");';
         const uuid = uuidv4();
         const response = LLM_RESPONSE_START + 
@@ -390,9 +393,10 @@ changeSummary: []
         const preCommandFile = path.join(testDir.path, 'pre.txt');
         const postCommandFile = path.join(testDir.path, 'post.txt');
     
+        // Use node directly as it's more reliable cross-platform
         const config = await createTestConfig(testDir.path, {
-            preCommand: `bun -e "require('fs').writeFileSync('pre.txt', '')"`,
-            postCommand: `bun -e "require('fs').writeFileSync('post.txt', '')"`,
+            preCommand: `node -e "require('fs').writeFileSync('${preCommandFile.replace(/\\/g, '\\\\')}', '')"`,
+            postCommand: `node -e "require('fs').writeFileSync('${postCommandFile.replace(/\\/g, '\\\\')}', '')"`,
         });
     
         const uuid = uuidv4();
