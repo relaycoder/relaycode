@@ -199,3 +199,8 @@ _____________________________________________
 that relay is using whole text applier strategy right? what if we supercharge it with multipe strategy with that above diff-apply api lib?? (no need to recreate, just import lib of (bun add diff-apply))
 
 so the llm can give  patchStrategy value on every fenced codes  ```typescript // {filePath} {patchStrategy}
+
+_________________________________________________
+
+why ```typescript // {src/components/UserProfile.tsx} new-unified contains curly {} in path? should be without it
+
