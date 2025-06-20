@@ -133,7 +133,7 @@ projectId: test-project
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            expect(parsed!.operations[0].path).toBe(filePath);
+            expect(parsed!.operations[0]!.path).toBe(filePath);
         });
 
         it('should handle empty content in a write operation', () => {
@@ -142,7 +142,7 @@ projectId: test-project
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            const operation = parsed!.operations[0];
+            const operation = parsed!.operations[0]!;
             expect(operation.type).toBe('write');
             if (operation.type === 'write') {
                 expect(operation.content).toBe('');
