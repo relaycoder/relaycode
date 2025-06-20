@@ -5,6 +5,7 @@ The content has been processed where content has been formatted for parsing in m
 ```
 package.json
 relaycode.config.json
+src/cli.ts
 src/commands/init.ts
 src/commands/watch.ts
 src/core/clipboard.ts
@@ -30,9 +31,9 @@ tsconfig.json
 {"projectId":"custom","customField":true}
 ````
 
-## File: src/index.ts
+## File: src/cli.ts
 ````typescript
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { watchCommand } from './commands/watch';
@@ -229,6 +230,37 @@ export const getProjectId = async (cwd: string = process.cwd()): Promise<string>
     }
     return path.basename(cwd);
 };
+````
+
+## File: src/index.ts
+````typescript
+// Core logic
+export { createClipboardWatcher } from './core/clipboard';
+export { findConfig, createConfig, getProjectId, ensureStateDirExists } from './core/config';
+export { 
+    applyOperations, 
+    createSnapshot, 
+    deleteFile, 
+    readFileContent, 
+    restoreSnapshot, 
+    writeFileContent 
+} from './core/executor';
+export { parseLLMResponse } from './core/parser';
+export { 
+    commitState,
+    deletePendingState,
+    hasBeenProcessed,
+    writePendingState
+} from './core/state';
+export { processPatch } from './core/transaction';
+
+// Types
+export * from './types';
+
+// Utils
+export { executeShellCommand, getErrorCount } from './utils/shell';
+export { logger } from './utils/logger';
+export { getConfirmation } from './utils/prompt';
 ````
 
 ## File: src/types.ts
@@ -459,34 +491,6 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
   }
   return exitCode === 0 ? 0 : 1;
 };
-````
-
-## File: tsconfig.json
-````json
-{
-  "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "lib": ["esnext"],
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true,
-    "allowJs": true,
-    "checkJs": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
-}
 ````
 
 ## File: src/commands/init.ts
@@ -856,6 +860,39 @@ export const deletePendingState = async (cwd: string, uuid: string): Promise<voi
 };
 ````
 
+## File: tsconfig.json
+````json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["esnext"],
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
+}
+````
+
 ## File: src/core/executor.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -1057,11 +1094,30 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
 ````json
 {
   "name": "relaycode",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "relay": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
+    "clean": "rm -rf dist",
+    "build": "bun run clean && bun tsc",
     "test": "bun test",
-    "dev": "bun run src/index.ts"
+    "dev": "bun run src/cli.ts",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "chalk": "^5.3.0",
@@ -1078,7 +1134,22 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
     "@types/js-yaml": "^4.0.9",
     "@types/uuid": "^9.0.8",
     "typescript": "^5.0.0"
-  }
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "automation",
+    "codegen",
+    "developer-tool",
+    "cli"
+  ],
+  "author": "Relay Code",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/relaycoder/relaycode.git"
+  },
+  "homepage": "https://relay.code"
 }
 ````
 
