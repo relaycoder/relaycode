@@ -191,3 +191,11 @@ Based on the requirements for `relaycode`, here is a comprehensive list of test 
 ____________________________________________________
 
 before applying, should compare parsed file with llm summary of changeSummary (filecount, what files) if not match, changeSummary from llm is the single source of truth for verification if the program confused why there are another invalid codeblock
+
+
+_____________________________________________
+
+
+that relay is using whole text applier strategy right? what if we supercharge it with multipe strategy with that above diff-apply api lib?? (no need to recreate, just import lib of (bun add diff-apply))
+
+so the llm can give  patchStrategy value on every fenced codes  ```typescript // {filePath} {patchStrategy}

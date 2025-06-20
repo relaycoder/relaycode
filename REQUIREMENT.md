@@ -59,6 +59,7 @@ Code changes rules 1-6:
     ```yaml
     projectId: your-project-name
     uuid: (generate a random uuid)
+    patchStrategy: 
     changeSummary:
       - edit: src/main.ts
       - new: src/components/Button.tsx
