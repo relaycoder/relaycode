@@ -187,45 +187,6 @@ The parser performs four main tasks on the clipboard content:
 [ ]  This directory is the single source of truth. Each successfully applied patch gets its own YAML file, serving as a permanent, human-readable log of the transaction, complete with the snapshot needed for potential manual reversions.
 ````
 
-## File: src/commands/watch.ts
-````typescript
-import { findConfig } from '../core/config';
-import { createClipboardWatcher } from '../core/clipboard';
-import { parseLLMResponse } from '../core/parser';
-import { processPatch } from '../core/transaction';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME } from '../utils/constants';
-
-export const watchCommand = async (): Promise<void> => {
-  const config = await findConfig();
-
-  if (!config) {
-    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-    logger.info("Please run 'relay init' to create one.");
-    process.exit(1);
-  }
-  
-  logger.success('Configuration loaded. Starting relaycode watch...');
-
-  const watcher = createClipboardWatcher(config.clipboardPollInterval, async (content) => {
-    logger.info('New clipboard content detected. Attempting to parse...');
-    const parsedResponse = parseLLMResponse(content);
-
-    if (!parsedResponse) {
-      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
-      return;
-    }
-    
-    logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse);
-    logger.info('--------------------------------------------------');
-    logger.info('Watching for next patch...');
-  });
-
-  watcher.start();
-};
-````
-
 ## File: src/index.ts
 ````typescript
 #!/usr/bin/env bun
@@ -554,57 +515,40 @@ export const initCommand = async (cwd: string = process.cwd()): Promise<void> =>
 };
 ````
 
-## File: src/core/clipboard.ts
+## File: src/commands/watch.ts
 ````typescript
-import clipboardy from 'clipboardy';
+import { findConfig } from '../core/config';
+import { createClipboardWatcher } from '../core/clipboard';
+import { parseLLMResponse } from '../core/parser';
+import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME } from '../utils/constants';
 
-type ClipboardCallback = (content: string) => void;
-type ClipboardReader = () => Promise<string>;
+export const watchCommand = async (): Promise<void> => {
+  const config = await findConfig();
 
-export const createClipboardWatcher = (
-  pollInterval: number,
-  callback: ClipboardCallback,
-  reader: ClipboardReader = clipboardy.read,
-) => {
-  let lastContent = '';
-  let intervalId: NodeJS.Timeout | null = null;
+  if (!config) {
+    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+    logger.info("Please run 'relay init' to create one.");
+    process.exit(1);
+  }
+  
+  logger.success('Configuration loaded. Starting relaycode watch...');
 
-  const checkClipboard = async () => {
-    try {
-      const content = await reader();
-      if (content && content !== lastContent) {
-        lastContent = content;
-        callback(content);
-      }
-    } catch (error) {
-      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
-      // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard:', error instanceof Error ? error.message : String(error));
-    }
-  };
+  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    logger.info('New clipboard content detected. Attempting to parse...');
+    const parsedResponse = parseLLMResponse(content);
 
-  const start = () => {
-    if (intervalId) {
+    if (!parsedResponse) {
+      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
       return;
     }
-    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
-    // Immediately check once, then start the interval
-    checkClipboard();
-    intervalId = setInterval(checkClipboard, pollInterval);
-  };
-
-  const stop = () => {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      logger.info('Clipboard watcher stopped.');
-    }
-  };
-
-  start();
-  
-  return { stop };
+    
+    logger.success('Valid patch format detected. Processing...');
+    await processPatch(config, parsedResponse);
+    logger.info('--------------------------------------------------');
+    logger.info('Watching for next patch...');
+  });
 };
 ````
 
@@ -882,6 +826,60 @@ export const createDeleteFileBlock = (filePath: string): string => {
 //TODO: delete this file
 \`\`\`
 `;
+};
+````
+
+## File: src/core/clipboard.ts
+````typescript
+import clipboardy from 'clipboardy';
+import { logger } from '../utils/logger';
+
+type ClipboardCallback = (content: string) => void;
+type ClipboardReader = () => Promise<string>;
+
+export const createClipboardWatcher = (
+  pollInterval: number,
+  callback: ClipboardCallback,
+  reader: ClipboardReader = clipboardy.read,
+) => {
+  let lastContent = '';
+  let intervalId: NodeJS.Timeout | null = null;
+
+  const checkClipboard = async () => {
+    try {
+      const content = await reader();
+      if (content && content !== lastContent) {
+        lastContent = content;
+        callback(content);
+      }
+    } catch (error) {
+      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
+      // So we log a warning but don't stop the watcher.
+      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const start = () => {
+    if (intervalId) {
+      return;
+    }
+    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
+    // Immediately check once, then start the interval
+    checkClipboard();
+    intervalId = setInterval(checkClipboard, pollInterval);
+  };
+
+  const stop = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+      logger.info('Clipboard watcher stopped.');
+    }
+  };
+
+  start();
+  
+  return { stop };
 };
 ````
 
@@ -1416,8 +1414,8 @@ describe('e2e/init', () => {
         console.log = originalLog; // Restore
 
         const outputString = capturedOutput.join('\n');
-        expect(outputString).toContain('Your project ID is: my-prompt-project');
-        expect(outputString).toContain('--- SYSTEM PROMPT ---');
+        expect(outputString).toContain(`projectId: ${pkgName}`);
+        expect(outputString).toContain('Code changes rules 1-6:');
     });
 });
 ````
@@ -1452,9 +1450,10 @@ describe('e2e/transaction', () => {
     beforeEach(async () => {
         testDir = await setupTestDirectory();
         await createTestFile(testDir.path, testFile, originalContent);
-        // A tsconfig is needed for `bun tsc` to run
+        // A tsconfig is needed for `bun tsc` to run and find files
         await createTestFile(testDir.path, 'tsconfig.json', JSON.stringify({
-            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true }
+            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true },
+            "include": ["src/**/*.ts"]
         }));
     });
 
@@ -1697,7 +1696,7 @@ describe('e2e/transaction', () => {
         \`\`\`
         `;
         
-        const parsedResponse = parseLLMResponse(responseWithWrongProject);
+        const parsedResponse = parseLLMResponse(responseWithWrongProject.trim());
         expect(parsedResponse).not.toBeNull();
         
         await processPatch(config, parsedResponse!, { cwd: testDir.path });
@@ -1817,8 +1816,8 @@ describe('e2e/transaction', () => {
         const postCommandFile = path.join(testDir.path, 'post.txt');
     
         const config = await createTestConfig(testDir.path, {
-            preCommand: `touch ${preCommandFile}`,
-            postCommand: `touch ${postCommandFile}`,
+            preCommand: `bun -e "require('fs').writeFileSync('pre.txt', '')"`,
+            postCommand: `bun -e "require('fs').writeFileSync('post.txt', '')"`,
         });
     
         const uuid = uuidv4();
@@ -1999,14 +1998,14 @@ const calculateLineChanges = (oldContent: string | null, newContent: string): Li
     for (let i = 1; i <= oldLen; i++) {
         for (let j = 1; j <= newLen; j++) {
             if (oldLines[i - 1] === newLines[j - 1]) {
-                lcs[i][j] = lcs[i - 1][j - 1] + 1;
+                lcs[i]![j] = lcs[i - 1]![j - 1] + 1;
             } else {
-                lcs[i][j] = Math.max(lcs[i - 1][j], lcs[i][j - 1]);
+                lcs[i]![j] = Math.max(lcs[i - 1]![j], lcs[i]![j - 1]);
             }
         }
     }
 
-    const commonLines = lcs[oldLen][newLen];
+    const commonLines = lcs[oldLen]![newLen];
     return {
         added: newLen - commonLines,
         removed: oldLen - commonLines,
@@ -2061,12 +2060,12 @@ const createTransaction = (deps: TransactionDependencies) => {
         if (op.type === 'write') {
             const oldContent = snapshot[op.path];
             await writeFileContent(op.path, op.content, cwd);
-            const { added, removed } = calculateLineChanges(oldContent, op.content);
+            const { added, removed } = calculateLineChanges(oldContent ?? null, op.content);
             opStats.push({ type: 'Written', path: op.path, added, removed });
         } else { // op.type === 'delete'
             const oldContent = snapshot[op.path];
             await deleteFile(op.path, cwd);
-            const { added, removed } = calculateLineChanges(oldContent, '');
+            const { added, removed } = calculateLineChanges(oldContent ?? null, '');
             opStats.push({ type: 'Deleted', path: op.path, added, removed });
         }
       }
@@ -2083,11 +2082,11 @@ const createTransaction = (deps: TransactionDependencies) => {
       try {
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
-        await deletePendingState(cwd, uuid);
-        logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
       } catch (rollbackError) {
         logger.error(`CRITICAL: Rollback after apply error failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
       }
+      await deletePendingState(cwd, uuid);
+      logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
       return; // Abort transaction
     }
 

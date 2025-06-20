@@ -4,9 +4,13 @@ export const executeShellCommand = async (command: string, cwd?: string): Promis
   if (!command) {
     return { stdout: '', stderr: '', exitCode: 0 };
   }
+
+  // Using a shell to properly handle commands with quotes and other shell features.
+  const isWindows = process.platform === 'win32';
+  const shell = isWindows ? (process.env.COMSPEC || 'cmd.exe') : '/bin/sh';
+  const shellFlag = isWindows ? '/c' : '-c';
   
-  const parts = command.split(' ');
-  const proc = Bun.spawn(parts, {
+  const proc = Bun.spawn([shell, shellFlag, command], {
     cwd: cwd || process.cwd(),
     stdout: 'pipe',
     stderr: 'pipe',
@@ -28,7 +32,10 @@ export const getErrorCount = async (linterCommand: string, cwd?: string): Promis
         // A simple way to count errors. This could be made more sophisticated.
         // For `tsc --noEmit`, errors are usually on stderr.
         const output = stderr || stdout;
-        const errorLines = output.split('\n').filter(line => line.includes('error TS')).length;
+        // Support both `tsc` (`... error TS...`) and `bun tsc` (`error: ...`)
+        const errorLines = output.split('\n').filter(
+            line => line.includes('error TS') || line.trim().toLowerCase().startsWith('error:')
+        ).length;
         return errorLines;
     } catch (e) {
         // If the command itself fails to run, treat as a high number of errors.

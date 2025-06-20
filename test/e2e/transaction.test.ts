@@ -259,20 +259,19 @@ describe('e2e/transaction', () => {
         const config = await createTestConfig(testDir.path, { projectId: 'correct-project' });
         const uuid = uuidv4();
         
-        const responseWithWrongProject = `
-        \`\`\`typescript // {src/index.ts}
-        // START
-        console.log("should not be applied");
-        // END
-        \`\`\`
-        \`\`\`yaml
-        projectId: wrong-project
-        uuid: ${uuid}
-        changeSummary: []
-        \`\`\`
-        `;
+        const responseWithWrongProject =
+`\`\`\`typescript // {src/index.ts}
+// START
+console.log("should not be applied");
+// END
+\`\`\`
+\`\`\`yaml
+projectId: wrong-project
+uuid: ${uuid}
+changeSummary: []
+\`\`\``;
         
-        const parsedResponse = parseLLMResponse(responseWithWrongProject.trim());
+        const parsedResponse = parseLLMResponse(responseWithWrongProject);
         expect(parsedResponse).not.toBeNull();
         
         await processPatch(config, parsedResponse!, { cwd: testDir.path });
