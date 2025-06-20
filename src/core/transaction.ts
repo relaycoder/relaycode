@@ -62,12 +62,17 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
     try {
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
-        await deletePendingState(cwd, uuid);
-        logger.success(`↩️ Transaction ${uuid} rolled back.`);
-        notifyFailure(uuid);
     } catch (error) {
         logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
         // Do not rethrow; we're already in a final error handling state.
+    } finally {
+        try {
+            await deletePendingState(cwd, uuid);
+            logger.success(`↩️ Transaction ${uuid} rolled back.`);
+            notifyFailure(uuid);
+        } catch (cleanupError) {
+            logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        }
     }
 };
 
