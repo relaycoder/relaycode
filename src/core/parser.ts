@@ -5,6 +5,7 @@ import {
     FileOperation,
     ParsedLLMResponse,
     ParsedLLMResponseSchema,
+    PatchStrategySchema,
 } from '../types';
 import {
     CODE_BLOCK_START_MARKER,
@@ -12,7 +13,7 @@ import {
     DELETE_FILE_MARKER
 } from '../utils/constants';
 
-const CODE_BLOCK_REGEX = /```(?:\w+)?\s*\/\/\s*{(.*?)}\n([\s\S]*?)\n```/g;
+const CODE_BLOCK_REGEX = /```(?:\w+)?\s*\/\/\s*{(.*?)}\s*(\S*)\n([\s\S]*?)\n```/g;
 const YAML_BLOCK_REGEX = /```yaml\n([\s\S]+?)\n```\s*$/;
 
 const extractCodeBetweenMarkers = (content: string): string => {
@@ -47,7 +48,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
     
     let match;
     while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
-        const [fullMatch, filePath, rawContent] = match;
+        const [fullMatch, filePath, patchStrategyStr, rawContent] = match;
 
         if (typeof filePath !== 'string' || typeof rawContent !== 'string') {
             continue;
@@ -55,12 +56,19 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
 
         matchedBlocks.push(fullMatch);
         const content = rawContent.trim();
+        const patchStrategy = PatchStrategySchema.parse(patchStrategyStr || undefined);
+
 
         if (content === DELETE_FILE_MARKER) {
             operations.push({ type: 'delete', path: filePath.trim() });
         } else {
             const cleanContent = extractCodeBetweenMarkers(content);
-            operations.push({ type: 'write', path: filePath.trim(), content: cleanContent });
+            operations.push({ 
+                type: 'write', 
+                path: filePath.trim(), 
+                content: cleanContent, 
+                patchStrategy 
+            });
         }
     }
     

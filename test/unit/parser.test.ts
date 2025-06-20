@@ -48,10 +48,10 @@ projectId: test-project
             expect(parseLLMResponse(response)).toBeNull();
         });
 
-        it('should correctly parse a single file write operation', () => {
+        it('should correctly parse a single file write operation with default "replace" strategy', () => {
             const content = 'const a = 1;';
             const filePath = 'src/utils.ts';
-            const block = createFileBlock(filePath, content);
+            const block = createFileBlock(filePath, content); // No strategy provided
             const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
             
             const parsed = parseLLMResponse(response);
@@ -65,7 +65,24 @@ projectId: test-project
                 type: 'write',
                 path: filePath,
                 content: content,
+                patchStrategy: 'replace',
             });
+        });
+        
+        it('should correctly parse a write operation with an explicit patch strategy', () => {
+            const content = 'diff content';
+            const filePath = 'src/utils.ts';
+            const block = createFileBlock(filePath, content, 'new-unified');
+            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            const writeOp = parsed?.operations[0];
+            expect(writeOp?.type).toBe('write');
+            if (writeOp?.type === 'write') {
+                expect(writeOp.patchStrategy).toBe('new-unified');
+                expect(writeOp.content).toBe(content);
+            }
         });
 
         it('should correctly parse a single file delete operation', () => {
@@ -92,11 +109,11 @@ projectId: test-project
 
             const response = [
                 "I'll make three changes.",
-                createFileBlock(filePath1, content1),
+                createFileBlock(filePath1, content1, 'replace'),
                 "Then delete a file.",
                 createDeleteFileBlock(filePath2),
-                "And finally add a new one.",
-                createFileBlock(filePath3, content3),
+                "And finally add a new one with a diff.",
+                createFileBlock(filePath3, 'diff content', 'new-unified'),
                 LLM_RESPONSE_END(testUuid, [{edit: filePath1}, {delete: filePath2}, {new: filePath3}])
             ].join('\n');
 
@@ -104,9 +121,9 @@ projectId: test-project
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(3);
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath1, content: content1 });
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath1, content: content1, patchStrategy: 'replace' });
             expect(parsed?.operations).toContainEqual({ type: 'delete', path: filePath2 });
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: content3 });
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: 'diff content', patchStrategy: 'new-unified' });
             expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
         });
         

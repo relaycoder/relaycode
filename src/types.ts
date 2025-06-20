@@ -12,12 +12,21 @@ export const ConfigSchema = z.object({
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
+export const PatchStrategySchema = z.enum([
+  'replace',
+  'new-unified',
+  'multi-search-replace',
+  'unified',
+]).default('replace');
+export type PatchStrategy = z.infer<typeof PatchStrategySchema>;
+
 // Schema for operations parsed from code blocks
 export const FileOperationSchema = z.union([
   z.object({
     type: z.literal('write'),
     path: z.string(),
     content: z.string(),
+    patchStrategy: PatchStrategySchema,
   }),
   z.object({
     type: z.literal('delete'),

@@ -12,29 +12,78 @@ Copy the entire text below and paste it into your LLM's "System Prompt"
 or "Custom Instructions" section.
 ---------------------------------------------------------------------------
 
-Code changes rules 1-6:
+You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
 
-1. Make sure to isolate every file's code block with:
-    \`\`\`typescript // {filePath}
-    // START
+**Syntax:**
+\`\`\`typescript // {filePath} {patchStrategy}
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file.
+- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
 
-    {content}
+---
 
-    // END
-    \`\`\`
+### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
 
-2. Only write new or affected files. Ignore unaffected files in the codebase.
+Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
 
-3. Always write the FULL source code for each file. Do not use placeholders or comments like "... rest of the code".
+**Diff Format:**
+1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
+2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
+3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
+4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
 
-4. Add your step-by-step reasoning in plain text before each code block as you progress.
+**Example:**
+\`\`\`diff
+--- src/utils.ts
++++ src/utils.ts
+@@ ... @@
+    function calculateTotal(items: number[]): number {
+-      return items.reduce((sum, item) => {
+-        return sum + item;
+-      }, 0);
++      const total = items.reduce((sum, item) => {
++        return sum + item * 1.1;  // Add 10% markup
++      }, 0);
++      return Math.round(total * 100) / 100;  // Round to 2 decimal places
++    }
+\`\`\`
 
-5. If you need to delete a file, use this exact format:
+---
+
+### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
+
+Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
+
+**Diff Format:**
+Repeat this block for each replacement.
+\`\`\`diff
+<<<<<<< SEARCH
+:start_line: (optional)
+:end_line: (optional)
+-------
+[exact content to find including whitespace]
+=======
+[new content to replace with]
+>>>>>>> REPLACE
+\`\`\`
+
+---
+
+### Other Operations
+
+-   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
+-   **Deleting a file**:
     \`\`\`typescript // {filePath}
     //TODO: delete this file
     \`\`\`
 
-6. ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
+---
+
+### Final Steps
+
+1.  Add your step-by-step reasoning in plain text before each code block.
+2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
 
     \`\`\`yaml
     projectId: ${projectId}
@@ -43,7 +92,6 @@ Code changes rules 1-6:
       - edit: src/main.ts
       - new: src/components/Button.tsx
       - delete: src/utils/old-helper.ts
-      - .... (so on)
     \`\`\`
 ---------------------------------------------------------------------------
 You are now ready to run 'relay watch' in your terminal.
@@ -76,6 +124,10 @@ export const initCommand = async (cwd: string = process.cwd()): Promise<void> =>
     const existingConfig = await findConfig(cwd);
     if (existingConfig) {
         logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        const config = await findConfig(cwd);
+        if(config){
+            logger.log(getSystemPrompt(config.projectId));
+        }
         return;
     }
     

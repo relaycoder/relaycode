@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { Config } from '../src/types';
+import { Config, PatchStrategy } from '../src/types';
 import { CONFIG_FILE_NAME } from '../src/utils/constants';
 
 export interface TestDir {
@@ -54,9 +54,10 @@ changeSummary: ${JSON.stringify(changeSummary)}
 \`\`\`
 `;
 
-export const createFileBlock = (filePath: string, content: string): string => {
+export const createFileBlock = (filePath: string, content: string, patchStrategy?: PatchStrategy): string => {
+    const strategyString = patchStrategy ? ` ${patchStrategy}` : '';
     return `
-\`\`\`typescript // {${filePath}}
+\`\`\`typescript // {${filePath}}${strategyString}
 // START
 
 ${content}

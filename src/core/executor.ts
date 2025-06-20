@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
+import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
 
 export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
@@ -65,12 +66,51 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
 };
 
 export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
-  // Apply operations in parallel
-  await Promise.all(operations.map(op => {
+  await Promise.all(operations.map(async op => {
     if (op.type === 'delete') {
       return deleteFile(op.path, cwd);
-    } else { // op.type === 'write'
+    } 
+    
+    if (op.patchStrategy === 'replace') {
       return writeFileContent(op.path, op.content, cwd);
+    }
+
+    const originalContent = await readFileContent(op.path, cwd);
+    if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
+      throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
+    }
+
+    const diffParams = {
+      originalContent: originalContent ?? '',
+      diffContent: op.content,
+    };
+
+    let result;
+    try {
+      switch (op.patchStrategy) {
+        case 'new-unified':
+          const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
+          result = await newUnifiedStrategy.applyDiff(diffParams);
+          break;
+        case 'multi-search-replace':
+          const multiSearchStrategy = multiSearchReplaceService.multiSearchReplaceService.create();
+          result = await multiSearchStrategy.applyDiff(diffParams);
+          break;
+        case 'unified':
+          const unifiedStrategy = unifiedDiffService.unifiedDiffService.create();
+          result = await unifiedStrategy.applyDiff(diffParams);
+          break;
+        default:
+          throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
+      }
+
+      if (result.success) {
+        await writeFileContent(op.path, result.content, cwd);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (e) {
+      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }));
 };
