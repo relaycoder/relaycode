@@ -1,5 +1,4 @@
-// src/core/transaction.ts
-import { Config, ParsedLLMResponse, StateFile, FileSnapshot } from '../types';
+import { Config, ParsedLLMResponse, StateFile, FileSnapshot, FileOperation } from '../types';
 import { logger } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
@@ -8,29 +7,29 @@ import { getConfirmation } from '../utils/prompt';
 
 type Prompter = (question: string) => Promise<boolean>;
 
-type TransactionDependencies = {
-  config: Config;
-  parsedResponse: ParsedLLMResponse;
-  prompter?: Prompter;
-  cwd: string;
+type ProcessPatchOptions = {
+    prompter?: Prompter;
+    cwd?: string;
 };
 
-type LineChanges = {
-    added: number;
-    removed: number;
-};
+const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, cwd: string): Promise<{ added: number; removed: number }> => {
+    const oldContent = snapshot[op.path] ?? null;
 
-// A simple LCS-based diff to calculate line changes.
-const calculateLineChanges = (oldContent: string | null, newContent: string): LineChanges => {
+    if (op.type === 'delete') {
+        const oldLines = oldContent ? oldContent.split('\n') : [];
+        return { added: 0, removed: oldLines.length };
+    }
+
+    // After applyOperations, the new content is on disk
+    const newContent = await readFileContent(op.path, cwd);
     if (oldContent === newContent) return { added: 0, removed: 0 };
 
     const oldLines = oldContent ? oldContent.split('\n') : [];
     const newLines = newContent ? newContent.split('\n') : [];
 
     if (oldContent === null || oldContent === '') return { added: newLines.length, removed: 0 };
-    if (newContent === '') return { added: 0, removed: oldLines.length };
-
-    // Simplified line change calculation for better performance
+    if (newContent === null || newContent === '') return { added: 0, removed: oldLines.length };
+    
     const oldSet = new Set(oldLines);
     const newSet = new Set(newLines);
     
@@ -40,188 +39,124 @@ const calculateLineChanges = (oldContent: string | null, newContent: string): Li
     return { added, removed };
 };
 
-// This HOF encapsulates the logic for processing a single patch.
-const createTransaction = (deps: TransactionDependencies) => {
-  const { config, parsedResponse, prompter = getConfirmation, cwd } = deps;
-  const { control, operations, reasoning } = parsedResponse;
-  const { uuid, projectId } = control;
+const logCompletionSummary = (
+    uuid: string,
+    startTime: number,
+    operations: FileOperation[],
+    opStats: Array<{ added: number; removed: number }>
+) => {
+    const duration = performance.now() - startTime;
+    const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
+    const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
 
-  // Get file paths that will be affected
-  const affectedFilePaths = operations.map(op => op.path);
-
-  const validate = async (): Promise<boolean> => {
-    if (projectId !== config.projectId) {
-      logger.warn(`Skipping patch: projectId mismatch (expected '${config.projectId}', got '${projectId}').`);
-      return false;
-    }
-    if (await hasBeenProcessed(cwd, uuid)) {
-      logger.info(`Skipping patch: uuid '${uuid}' has already been processed.`);
-      return false;
-    }
-    return true;
-  };
-  
-  const execute = async (snapshot: FileSnapshot, startTime: number): Promise<void> => {
-    logger.info(`🚀 Starting transaction for patch ${uuid}...`);
-    logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
-    
-    logger.log(`  - Snapshot of ${Object.keys(snapshot).length} files taken.`);
-    
-    const stateFile: StateFile = {
-      uuid,
-      projectId,
-      createdAt: new Date().toISOString(),
-      reasoning,
-      operations,
-      snapshot,
-      approved: false,
-    };
-    
-    // Prepare state file but don't wait for write to complete yet
-    const pendingStatePromise = writePendingState(cwd, stateFile);
-
-    // --- Execution Phase ---
-    const opStats: Array<{ type: 'Written' | 'Deleted', path: string, added: number, removed: number }> = [];
-    
-    try {
-      // Wait for pending state write to complete
-      await pendingStatePromise;
-      logger.success('  - Staged changes to .pending.yml file.');
-      
-      logger.log('  - Applying file operations...');
-      await applyOperations(operations, cwd);
-      logger.success('File operations complete.');
-
-      const statPromises = operations.map(async op => {
-        const oldContent = snapshot[op.path] ?? null;
-        if (op.type === 'write') {
-            const newContent = await readFileContent(op.path, cwd);
-            const { added, removed } = calculateLineChanges(oldContent, newContent ?? '');
-            opStats.push({ type: 'Written', path: op.path, added, removed });
-            logger.success(`✔ Written: ${op.path} (+${added}, -${removed})`);
-        } else { // op.type === 'delete'
-            const { added, removed } = calculateLineChanges(oldContent, '');
-            opStats.push({ type: 'Deleted', path: op.path, added, removed });
-            logger.success(`✔ Deleted: ${op.path}`);
-        }
-      });
-      await Promise.all(statPromises);
-      
-    } catch (error) {
-      logger.error(`Failed to apply file operations: ${error instanceof Error ? error.message : String(error)}. Rolling back.`);
-      try {
-        await restoreSnapshot(snapshot, cwd);
-        logger.success('  - Files restored to original state.');
-      } catch (rollbackError) {
-        logger.error(`CRITICAL: Rollback after apply error failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
-      }
-      await deletePendingState(cwd, uuid);
-      logger.success(`↩️ Transaction ${uuid} rolled back due to apply error.`);
-      return; // Abort transaction
-    }
-
-    // --- Verification & Decision Phase ---
-    let postCommandFailed = false;
-    if (config.postCommand) {
-      logger.log(`  - Running post-command: ${config.postCommand}`);
-      const postResult = await executeShellCommand(config.postCommand, cwd);
-      if (postResult.exitCode !== 0) {
-        logger.error(`Post-command failed with exit code ${postResult.exitCode}, forcing rollback.`);
-        if (postResult.stderr) logger.error(`Stderr: ${postResult.stderr}`);
-        postCommandFailed = true;
-      }
-    }
-
-    // Run linter check in parallel with postCommand if possible
-    const finalErrorCountPromise = config.linter ? getErrorCount(config.linter, cwd) : Promise.resolve(0);
-    const finalErrorCount = await finalErrorCountPromise;
-    logger.log(`  - Final linter error count: ${finalErrorCount}`);
-
-    let isApproved = false;
-    if (postCommandFailed) {
-      isApproved = false; // Force rollback
-    } else {
-      const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
-      if (canAutoApprove) {
-          isApproved = true;
-          logger.success('  - Changes automatically approved based on your configuration.');
-      } else {
-          isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
-      }
-    }
-    
-    // --- Commit/Rollback Phase ---
-    if (isApproved) {
-        logger.log('  - Committing changes...');
-        const finalState: StateFile = { ...stateFile, approved: true };
-        // Update pending state with approved: true, then commit (rename) the file.
-        // This is now sequential to prevent a race condition.
-        await writePendingState(cwd, finalState);
-        await commitState(cwd, uuid);
-
-        const duration = performance.now() - startTime;
-        const totalSucceeded = opStats.length;
-        const totalFailed = operations.length - totalSucceeded;
-        const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
-        const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
-        
-        logger.log('\nSummary:');
-        logger.log(`Attempted: ${operations.length} file(s) (${totalSucceeded} succeeded, ${totalFailed} failed)`);
-        logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
-        logger.log(`Completed in ${duration.toFixed(2)}ms`);
-
-        logger.success(`✅ Transaction ${uuid} committed successfully!`);
-    } else {
-        logger.warn('  - Rolling back changes...');
-        
-        try {
-            await restoreSnapshot(snapshot, cwd);
-            logger.success('  - Files restored to original state.');
-            await deletePendingState(cwd, uuid);
-            logger.success(`↩️ Transaction ${uuid} rolled back.`);
-        } catch (error) {
-            logger.error(`Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
-            throw error;
-        }
-    }
-  };
-
-  return {
-    run: async () => {
-      if (!(await validate())) return;
-
-      if (config.preCommand) {
-        logger.log(`  - Running pre-command: ${config.preCommand}`);
-        const { exitCode, stderr } = await executeShellCommand(config.preCommand, cwd);
-        if (exitCode !== 0) {
-          logger.error(`Pre-command failed with exit code ${exitCode}, aborting transaction.`);
-          if (stderr) logger.error(`Stderr: ${stderr}`);
-          return;
-        }
-      }
-
-      const startTime = performance.now();
-
-      try {
-        // Take a snapshot before applying any changes
-        logger.log(`Taking snapshot of files that will be affected...`);
-        const snapshot = await createSnapshot(affectedFilePaths, cwd);
-        
-        await execute(snapshot, startTime);
-      } catch (error) {
-        logger.error(`Transaction ${uuid} failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    },
-  };
+    logger.log('\nSummary:');
+    logger.log(`Applied ${operations.length} file operation(s) successfully.`);
+    logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
+    logger.log(`Completed in ${duration.toFixed(2)}ms`);
+    logger.success(`✅ Transaction ${uuid} committed successfully!`);
 };
 
-type ProcessPatchOptions = {
-    prompter?: Prompter;
-    cwd?: string;
-}
+const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnapshot, reason: string): Promise<void> => {
+    logger.warn(`Rolling back changes: ${reason}`);
+    try {
+        await restoreSnapshot(snapshot, cwd);
+        logger.success('  - Files restored to original state.');
+        await deletePendingState(cwd, uuid);
+        logger.success(`↩️ Transaction ${uuid} rolled back.`);
+    } catch (error) {
+        logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
+        // Do not rethrow; we're already in a final error handling state.
+    }
+};
 
 export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse, options?: ProcessPatchOptions): Promise<void> => {
     const cwd = options?.cwd || process.cwd();
-    const transaction = createTransaction({ config, parsedResponse, prompter: options?.prompter, cwd });
-    await transaction.run();
+    const prompter = options?.prompter || getConfirmation;
+    const { control, operations, reasoning } = parsedResponse;
+    const { uuid, projectId } = control;
+    const startTime = performance.now();
+
+    // 1. Validation
+    if (projectId !== config.projectId) {
+        logger.warn(`Skipping patch: projectId mismatch (expected '${config.projectId}', got '${projectId}').`);
+        return;
+    }
+    if (await hasBeenProcessed(cwd, uuid)) {
+        logger.info(`Skipping patch: uuid '${uuid}' has already been processed.`);
+        return;
+    }
+
+    // 2. Pre-flight checks
+    if (config.preCommand) {
+        logger.log(`  - Running pre-command: ${config.preCommand}`);
+        const { exitCode, stderr } = await executeShellCommand(config.preCommand, cwd);
+        if (exitCode !== 0) {
+            logger.error(`Pre-command failed with exit code ${exitCode}, aborting transaction.`);
+            if (stderr) logger.error(`Stderr: ${stderr}`);
+            return;
+        }
+    }
+
+    logger.info(`🚀 Starting transaction for patch ${uuid}...`);
+    logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
+
+    const affectedFilePaths = operations.map(op => op.path);
+    const snapshot = await createSnapshot(affectedFilePaths, cwd);
+    
+    const stateFile: StateFile = {
+        uuid, projectId, createdAt: new Date().toISOString(), reasoning, operations, snapshot, approved: false,
+    };
+
+    try {
+        await writePendingState(cwd, stateFile);
+        logger.success('  - Staged changes to .pending.yml file.');
+
+        // Apply changes
+        logger.log('  - Applying file operations...');
+        await applyOperations(operations, cwd);
+        logger.success('  - File operations complete.');
+
+        const opStatsPromises = operations.map(async op => {
+            const stats = await calculateLineChanges(op, snapshot, cwd);
+            if (op.type === 'write') {
+                logger.success(`✔ Written: ${op.path} (+${stats.added}, -${stats.removed})`);
+            } else {
+                logger.success(`✔ Deleted: ${op.path}`);
+            }
+            return stats;
+        });
+        const opStats = await Promise.all(opStatsPromises);
+
+        // Run post-command
+        if (config.postCommand) {
+            logger.log(`  - Running post-command: ${config.postCommand}`);
+            const postResult = await executeShellCommand(config.postCommand, cwd);
+            if (postResult.exitCode !== 0) {
+                logger.error(`Post-command failed with exit code ${postResult.exitCode}.`);
+                if (postResult.stderr) logger.error(`Stderr: ${postResult.stderr}`);
+                throw new Error('Post-command failed, forcing rollback.');
+            }
+        }
+
+        // Check for approval
+        const finalErrorCount = await getErrorCount(config.linter, cwd);
+        logger.log(`  - Final linter error count: ${finalErrorCount}`);
+        const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
+        
+        const isApproved = canAutoApprove
+            ? (logger.success('  - Changes automatically approved based on your configuration.'), true)
+            : await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+
+        if (isApproved) {
+            stateFile.approved = true;
+            await writePendingState(cwd, stateFile); // Update state with approved: true before commit
+            await commitState(cwd, uuid);
+            logCompletionSummary(uuid, startTime, operations, opStats);
+        } else {
+            throw new Error('Changes were not approved.');
+        }
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await rollbackTransaction(cwd, uuid, snapshot, reason);
+    }
 };

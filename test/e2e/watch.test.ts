@@ -6,63 +6,43 @@ import { createClipboardWatcher } from '../../src/core/clipboard';
 import { parseLLMResponse } from '../../src/core/parser';
 import { processPatch } from '../../src/core/transaction';
 import { findConfig } from '../../src/core/config';
-import { setupTestDirectory, TestDir, createTestConfig, createTestFile, createFileBlock, LLM_RESPONSE_END, LLM_RESPONSE_START } from '../test.util';
-
-// Suppress console output for cleaner test logs
-beforeEach(() => {
-    global.console.info = () => {};
-    global.console.log = () => {};
-    global.console.warn = () => {};
-    global.console.error = () => {};
-    //@ts-ignore
-    global.console.success = () => {};
-});
+import { setupE2ETest, E2ETestContext, createTestConfig, createTestFile, createFileBlock, LLM_RESPONSE_END, LLM_RESPONSE_START } from '../test.util';
 
 describe('e2e/watch', () => {
-    let testDir: TestDir;
+    let context: E2ETestContext;
     let watcher: { stop: () => void } | null = null;
 
     beforeEach(async () => {
-        testDir = await setupTestDirectory();
+        context = await setupE2ETest();
     });
 
     afterEach(async () => {
         if (watcher) {
             watcher.stop();
-            // Add a small delay to ensure resources are released before cleanup
-            await new Promise(resolve => setTimeout(resolve, 100));
             watcher = null;
         }
-        
-        // Give filesystem operations time to complete before cleaning up
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        if (testDir) {
-            try {
-                await testDir.cleanup();
-            } catch (error) {
-                console.error('Failed to clean up test directory:', error);
-            }
+        if (context) {
+            await context.cleanup();
         }
     });
 
     it('should ignore invalid patch and process subsequent valid patch', async () => {
         const pollInterval = 50;
-        await createTestConfig(testDir.path, { clipboardPollInterval: pollInterval });
+        await createTestConfig(context.testDir.path, { clipboardPollInterval: pollInterval });
         const testFile = 'src/index.ts';
         const originalContent = 'console.log("original");';
-        await createTestFile(testDir.path, testFile, originalContent);
+        await createTestFile(context.testDir.path, testFile, originalContent);
     
         let fakeClipboardContent = 'this is not a valid patch, just some random text.';
         const clipboardReader = async () => fakeClipboardContent;
     
         const onClipboardChange = async (content: string) => {
-            const currentConfig = await findConfig(testDir.path);
+            const currentConfig = await findConfig(context.testDir.path);
             const parsedResponse = parseLLMResponse(content);
             if (!currentConfig || !parsedResponse) {
                 return;
             }
-            await processPatch(currentConfig, parsedResponse, { cwd: testDir.path });
+            await processPatch(currentConfig, parsedResponse, { cwd: context.testDir.path });
         };
     
         watcher = createClipboardWatcher(pollInterval, onClipboardChange, clipboardReader);
@@ -70,7 +50,7 @@ describe('e2e/watch', () => {
         // Wait for a couple of poll cycles to ensure the invalid patch is read and ignored
         await new Promise(resolve => setTimeout(resolve, pollInterval * 3));
     
-        const contentAfterInvalid = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        const contentAfterInvalid = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(contentAfterInvalid).toBe(originalContent);
     
         // Now, provide a valid patch
@@ -85,7 +65,7 @@ describe('e2e/watch', () => {
         // We also need to account for file system operations.
         await new Promise(resolve => setTimeout(resolve, pollInterval * 5));
     
-        const contentAfterValid = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        const contentAfterValid = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(contentAfterValid).toBe(newContent);
     });
 });

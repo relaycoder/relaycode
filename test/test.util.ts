@@ -19,6 +19,59 @@ export const setupTestDirectory = async (): Promise<TestDir> => {
     return { path: testDirPath, cleanup };
 };
 
+export interface E2ETestContext {
+    testDir: TestDir;
+    cleanup: () => Promise<void>;
+}
+
+export const setupE2ETest = async (options: { withTsconfig?: boolean } = {}): Promise<E2ETestContext> => {
+    const testDir = await setupTestDirectory();
+
+    if (options.withTsconfig) {
+        await createTestFile(testDir.path, 'tsconfig.json', JSON.stringify({
+            "compilerOptions": { "strict": true, "noEmit": true, "isolatedModules": true },
+            "include": ["src/**/*.ts"]
+        }, null, 2));
+    }
+    
+    // Suppress console output
+    const originalConsole = {
+        info: global.console.info,
+        log: global.console.log,
+        warn: global.console.warn,
+        error: global.console.error,
+        success: (global.console as any).success,
+        prompt: (global.console as any).prompt,
+    };
+    
+    global.console.info = () => {};
+    global.console.log = () => {};
+    global.console.warn = () => {};
+    global.console.error = () => {};
+    if ((global.console as any).success) (global.console as any).success = () => {};
+    if ((global.console as any).prompt) (global.console as any).prompt = () => {};
+
+
+    const cleanup = async () => {
+        // Restore console
+        global.console.info = originalConsole.info;
+        global.console.log = originalConsole.log;
+        global.console.warn = originalConsole.warn;
+        global.console.error = originalConsole.error;
+        if (originalConsole.success) (global.console as any).success = originalConsole.success;
+        if (originalConsole.prompt) (global.console as any).prompt = originalConsole.prompt;
+        
+        // Give fs operations time to complete before cleanup
+        await new Promise(resolve => setTimeout(resolve, 150));
+        
+        // Cleanup directory
+        await testDir.cleanup();
+    };
+
+    return { testDir, cleanup };
+};
+
+
 export const createTestConfig = async (cwd: string, overrides: Partial<Config> = {}): Promise<Config> => {
     const defaultConfig: Config = {
         projectId: 'test-project',

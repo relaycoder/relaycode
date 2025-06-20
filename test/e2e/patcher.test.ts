@@ -4,30 +4,23 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { processPatch } from '../../src/core/transaction';
 import { parseLLMResponse } from '../../src/core/parser';
-import { setupTestDirectory, TestDir, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
+import { setupE2ETest, E2ETestContext, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
 
 // NOTE: This test file uses the actual 'diff-apply' dependency, not a mock.
 
 describe('e2e/patcher', () => {
-    let testDir: TestDir;
+    let context: E2ETestContext;
 
     beforeEach(async () => {
-        testDir = await setupTestDirectory();
-        // Suppress console output for cleaner test logs
-        global.console.info = () => {};
-        global.console.log = () => {};
-        global.console.warn = () => {};
-        global.console.error = () => {};
-        //@ts-ignore
-        global.console.success = () => {};
+        context = await setupE2ETest();
     });
 
     afterEach(async () => {
-        await testDir.cleanup();
+        if (context) await context.cleanup();
     });
 
     it('should correctly apply a patch using the multi-search-replace strategy', async () => {
-        const config = await createTestConfig(testDir.path);
+        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/config.js';
         const originalContent = `
 const config = {
@@ -36,7 +29,7 @@ const config = {
     enableLogging: true,
 };
 `;
-        await createTestFile(testDir.path, testFile, originalContent);
+        await createTestFile(context.testDir.path, testFile, originalContent);
 
         const diffContent = `
 <<<<<<< SEARCH
@@ -60,9 +53,9 @@ const config = {
         const parsedResponse = parseLLMResponse(llmResponse);
         expect(parsedResponse).not.toBeNull();
 
-        await processPatch(config, parsedResponse!, { cwd: testDir.path });
+        await processPatch(config, parsedResponse!, { cwd: context.testDir.path });
 
-        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         
         const expectedContent = `
 const config = {
@@ -75,14 +68,14 @@ const config = {
     });
 
     it('should correctly apply a patch using the new-unified strategy', async () => {
-        const config = await createTestConfig(testDir.path);
+        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/utils.js';
         const originalContent = `function calculate() {
     const a = 1;
     const b = 2;
     return a + b;
 }`;
-        await createTestFile(testDir.path, testFile, originalContent);
+        await createTestFile(context.testDir.path, testFile, originalContent);
 
         const diffContent = `--- a/${testFile}
 +++ b/${testFile}
@@ -101,9 +94,9 @@ const config = {
         const parsedResponse = parseLLMResponse(llmResponse);
         expect(parsedResponse).not.toBeNull();
 
-        await processPatch(config, parsedResponse!, { cwd: testDir.path });
+        await processPatch(config, parsedResponse!, { cwd: context.testDir.path });
 
-        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         
         const expectedContent = `function calculate() {
     const a = 1;
@@ -117,10 +110,10 @@ const config = {
 
 
     it('should fail transaction if multi-search-replace content is not found', async () => {
-        const config = await createTestConfig(testDir.path);
+        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/index.js';
         const originalContent = 'const version = 1;';
-        await createTestFile(testDir.path, testFile, originalContent);
+        await createTestFile(context.testDir.path, testFile, originalContent);
 
         const diffContent = `
 <<<<<<< SEARCH
@@ -136,14 +129,14 @@ const version = 3;
         
         const parsedResponse = parseLLMResponse(llmResponse)!;
 
-        await processPatch(config, parsedResponse, { cwd: testDir.path });
+        await processPatch(config, parsedResponse, { cwd: context.testDir.path });
 
         // The file content should remain unchanged
-        const finalContent = await fs.readFile(path.join(testDir.path, testFile), 'utf-8');
+        const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(finalContent).toBe(originalContent);
 
         // No state file should have been committed
-        const stateFileExists = await fs.access(path.join(testDir.path, '.relaycode', `${uuid}.yml`)).then(() => true).catch(() => false);
+        const stateFileExists = await fs.access(path.join(context.testDir.path, '.relaycode', `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(false);
     });
 });
