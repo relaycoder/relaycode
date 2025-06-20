@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { processPatch } from '../../src/core/transaction';
 import { parseLLMResponse } from '../../src/core/parser';
 import { setupTestDirectory, TestDir, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
-import * as DiffApply from 'diff-apply';
 
 // Mock the diff-apply library
 mock.module('diff-apply', () => {
@@ -17,20 +16,26 @@ mock.module('diff-apply', () => {
         })
     });
 
-    const multiSearchReplaceLogic = (params: { originalContent: string; diffContent: string; }) => {
+    const multiSearchReplaceLogic = (params: { originalContent: string; diffContent: string; }): { success: boolean; content: string; error?: string; } => {
         let modifiedContent = params.originalContent;
         const blocks = params.diffContent.split('>>>>>>> REPLACE').filter(b => b.trim());
         
         for (const block of blocks) {
             const parts = block.split('=======');
-            if (parts.length !== 2) return { success: false, error: 'Invalid block' };
+            if (parts.length !== 2) return { success: false, content: params.originalContent, error: 'Invalid block' };
 
-            const searchPart = parts[0].split('<<<<<<< SEARCH')[1];
-            if (!searchPart) return { success: false, error: 'Invalid search block' };
-            
+            const searchBlock = parts[0];
             let replaceContent = parts[1];
+
+            if (searchBlock === undefined || replaceContent === undefined) {
+                return { success: false, content: params.originalContent, error: 'Invalid block structure' };
+            }
+
+            const searchPart = searchBlock.split('<<<<<<< SEARCH')[1];
+            if (!searchPart) return { success: false, content: params.originalContent, error: 'Invalid search block' };
+            
             const searchContentPart = searchPart.split('-------')[1];
-            if (!searchContentPart) return { success: false, error: 'Invalid search block content' };
+            if (searchContentPart === undefined) return { success: false, content: params.originalContent, error: 'Invalid search block content' };
 
             let searchContent = searchContentPart;
              if (searchContent.startsWith('\n')) searchContent = searchContent.substring(1);
@@ -41,16 +46,16 @@ mock.module('diff-apply', () => {
             if (modifiedContent.includes(searchContent)) {
                 modifiedContent = modifiedContent.replace(searchContent, replaceContent);
             } else {
-                return { success: false, error: 'Search content not found' };
+                return { success: false, content: params.originalContent, error: 'Search content not found' };
             }
         }
         return { success: true, content: modifiedContent };
     };
 
     return {
-        newUnifiedDiffStrategyService: createMockStrategy(() => ({ success: false, error: 'Not implemented' })),
+        newUnifiedDiffStrategyService: createMockStrategy(p => ({ success: false, content: p.originalContent, error: 'Not implemented' })),
         multiSearchReplaceService: createMockStrategy(multiSearchReplaceLogic),
-        unifiedDiffService: createMockStrategy(() => ({ success: false, error: 'Not implemented' })),
+        unifiedDiffService: createMockStrategy(p => ({ success: false, content: p.originalContent, error: 'Not implemented' })),
     };
 });
 

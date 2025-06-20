@@ -48,7 +48,7 @@ describe('e2e/watch', () => {
 
     it('should ignore invalid patch and process subsequent valid patch', async () => {
         const pollInterval = 50;
-        const config = await createTestConfig(testDir.path, { clipboardPollInterval: pollInterval });
+        await createTestConfig(testDir.path, { clipboardPollInterval: pollInterval });
         const testFile = 'src/index.ts';
         const originalContent = 'console.log("original");';
         await createTestFile(testDir.path, testFile, originalContent);

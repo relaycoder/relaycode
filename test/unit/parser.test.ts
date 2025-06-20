@@ -105,7 +105,6 @@ projectId: test-project
             const content1 = 'console.log("main");';
             const filePath2 = 'src/to-delete.ts';
             const filePath3 = 'src/new-feature.ts';
-            const content3 = 'export const feature = {};';
 
             const response = [
                 "I'll make three changes.",
@@ -132,16 +131,21 @@ projectId: test-project
             const content = '<button>Click Me</button>';
             const response = createFileBlock(filePath, content) + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
             const parsed = parseLLMResponse(response);
-            expect(parsed?.operations[0].path).toBe(filePath);
+            expect(parsed).not.toBeNull();
+            expect(parsed!.operations).toHaveLength(1);
+            expect(parsed!.operations[0].path).toBe(filePath);
         });
 
         it('should handle empty content in a write operation', () => {
             const filePath = 'src/empty.ts';
             const response = createFileBlock(filePath, '') + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
             const parsed = parseLLMResponse(response);
-            expect(parsed?.operations[0].type).toBe('write');
-            if (parsed?.operations[0].type === 'write') {
-                expect(parsed.operations[0].content).toBe('');
+            expect(parsed).not.toBeNull();
+            expect(parsed!.operations).toHaveLength(1);
+            const operation = parsed!.operations[0];
+            expect(operation.type).toBe('write');
+            if (operation.type === 'write') {
+                expect(operation.content).toBe('');
             }
         });
 

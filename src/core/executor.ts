@@ -93,12 +93,10 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
           result = await newUnifiedStrategy.applyDiff(diffParams);
           break;
         case 'multi-search-replace':
-          const multiSearchStrategy = multiSearchReplaceService.multiSearchReplaceService.create();
-          result = await multiSearchStrategy.applyDiff(diffParams);
+          result = await multiSearchReplaceService.multiSearchReplaceService.applyDiff(diffParams);
           break;
         case 'unified':
-          const unifiedStrategy = unifiedDiffService.unifiedDiffService.create();
-          result = await unifiedStrategy.applyDiff(diffParams);
+          result = await unifiedDiffService.unifiedDiffService.applyDiff(diffParams.originalContent, diffParams.diffContent);
           break;
         default:
           throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
