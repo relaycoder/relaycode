@@ -326,3 +326,5 @@ We welcome contributions! Please feel free to open an issue or submit a pull req
 ## License
 
 This project is licensed under the MIT License.
+
+npm install -g .

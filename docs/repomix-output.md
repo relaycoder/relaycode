@@ -1,6 +1,7 @@
 # Directory Structure
 ```
 package.json
+relaycode.config.json
 src/cli.ts
 src/commands/init.ts
 src/commands/watch.ts
@@ -114,33 +115,18 @@ export const getConfirmation = (question: string): Promise<boolean> => {
 };
 ````
 
-## File: src/cli.ts
-````typescript
-#!/usr/bin/env node
-import { Command } from 'commander';
-import { initCommand } from './commands/init';
-import { watchCommand } from './commands/watch';
-
-const program = new Command();
-
-program
-  .name('relay')
-  .description('A developer assistant that automates applying code changes from LLMs.');
-
-program
-  .command('init')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
-
-program
-  .command('watch')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(watchCommand);
-
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
+## File: relaycode.config.json
+````json
+{
+  "projectId": "relaycode",
+  "logLevel": "info",
+  "clipboardPollInterval": 2000,
+  "approval": "yes",
+  "approvalOnErrorCount": 0,
+  "linter": "bun tsc -b --noEmit",
+  "preCommand": "",
+  "postCommand": "",
+  "preferredStrategy": "auto"
 }
 ````
 
@@ -234,6 +220,87 @@ export const logger = {
     }
   },
 };
+````
+
+## File: src/cli.ts
+````typescript
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { watchCommand } from './commands/watch';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import fs from 'node:fs';
+
+// Default version in case we can't find the package.json
+let version = '0.0.0';
+
+try {
+  // Try multiple strategies to find the package.json
+  const require = createRequire(import.meta.url);
+  let pkg;
+  
+  // Strategy 1: Try to find package.json relative to the current file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  
+  // Try different possible locations
+  const possiblePaths = [
+    join(__dirname, 'package.json'),
+    join(__dirname, '..', 'package.json'),
+    join(__dirname, '..', '..', 'package.json'),
+    resolve(process.cwd(), 'package.json')
+  ];
+  
+  let foundPath = null;
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      foundPath = path;
+      pkg = require(path);
+      break;
+    }
+  }
+  
+  // Strategy 2: If we still don't have it, try to get it from the npm package name
+  if (!pkg) {
+    try {
+      pkg = require('relaycode/package.json');
+    } catch (e) {
+      // Ignore this error
+    }
+  }
+  
+  if (pkg && pkg.version) {
+    version = pkg.version;
+  }
+} catch (error) {
+  // Fallback to default version if we can't find the package.json
+  console.error('Warning: Could not determine package version', error);
+}
+
+const program = new Command();
+
+program
+  .name('relay')
+  .version(version)
+  .description('A developer assistant that automates applying code changes from LLMs.');
+
+program
+  .command('init')
+  .description('Initializes relaycode in the current project.')
+  .action(() => initCommand());
+
+program
+  .command('watch')
+  .description('Starts watching the clipboard for code changes to apply.')
+  .action(watchCommand);
+
+program.parse(process.argv);
+
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
+}
 ````
 
 ## File: src/core/config.ts
@@ -809,13 +876,47 @@ You can review your configuration in ${CONFIG_FILE_NAME}.
 };
 ````
 
+## File: tsconfig.json
+````json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
+}
+````
+
 ## File: src/core/clipboard.ts
 ````typescript
 import clipboardy from 'clipboardy';
 import { logger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
 
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
@@ -823,18 +924,34 @@ type ClipboardReader = () => Promise<string>;
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {
-  return async () => {
+  return () => new Promise((resolve) => {
     try {
       const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-      if (fs.existsSync(localExePath)) {
-        const result = execSync(`"${localExePath}" --paste`, { encoding: 'utf8' });
-        return result;
+      if (!fs.existsSync(localExePath)) {
+        logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
+        // Resolve with empty string to avoid stopping the watcher loop, but log an error.
+        return resolve('');
       }
-      throw new Error('Windows clipboard executable not found');
-    } catch (error) {
-      throw new Error(`Clipboard read failed: ${error instanceof Error ? error.message : String(error)}`);
+      
+      const command = `"${localExePath}" --paste`;
+      
+      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (error) {
+          // It's common for the clipboard executable to fail if the clipboard is empty
+          // or contains non-text data (e.g., an image). We can treat this as "no content".
+          // We don't log this as an error to avoid spamming the console during normal use.
+          logger.debug(`Windows clipboard read command failed (this is often normal): ${stderr.trim()}`);
+          resolve('');
+        } else {
+          resolve(stdout);
+        }
+      });
+    } catch (syncError) {
+      // Catch synchronous errors during setup (e.g., path issues).
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      resolve('');
     }
-  };
+  });
 };
 
 // Check if the clipboard executable exists and fix path issues on Windows
@@ -932,40 +1049,6 @@ export const createClipboardWatcher = (
   
   return { stop };
 };
-````
-
-## File: tsconfig.json
-````json
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": ["ESNext"],
-    "moduleDetection": "force",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true,
-    "allowJs": true,
-    "checkJs": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
-}
 ````
 
 ## File: src/core/executor.ts
@@ -1525,7 +1608,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 ````json
 {
   "name": "relaycode",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
   "main": "./dist/index.js",

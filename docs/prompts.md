@@ -273,3 +273,7 @@ ________________________________________
 implement preferred strategy add to json config. including `replace` strategy, default is let llm decide. this config will affect init system prompt to give to llm, so we safe certain tokens by letting llm know only the strategy given. the prompt should be given at relay watch.
 
 so now, the relay init only show instructions and guides to adjust config.json then ask user to relay watch . so relay init, not showing prompt at all 
+
+______________________________________
+
+while relay watch is running, user modifying config will trigger refresh on relay watch

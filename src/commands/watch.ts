@@ -6,6 +6,8 @@ import { logger } from '../utils/logger';
 import { CONFIG_FILE_NAME } from '../utils/constants';
 import { notifyPatchDetected } from '../utils/notifier';
 import { Config } from '../types';
+import fs from 'fs';
+import path from 'path';
 
 const getSystemPrompt = (projectId: string, preferredStrategy: Config['preferredStrategy']): string => {
     const header = `
@@ -167,35 +169,72 @@ Repeat this block for each replacement.
 }
 
 export const watchCommand = async (): Promise<void> => {
-  const config = await findConfig();
+  let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
+  const configPath = path.resolve(process.cwd(), CONFIG_FILE_NAME);
+  let debounceTimer: NodeJS.Timeout | null = null;
 
-  if (!config) {
+  const startServices = (config: Config) => {
+    // Stop existing watcher if it's running
+    if (clipboardWatcher) {
+      clipboardWatcher.stop();
+    }
+
+    logger.setLevel(config.logLevel);
+    logger.debug(`Log level set to: ${config.logLevel}`);
+    logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+
+    logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
+
+    clipboardWatcher = createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+      logger.info('New clipboard content detected. Attempting to parse...');
+      const parsedResponse = parseLLMResponse(content);
+
+      if (!parsedResponse) {
+        logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
+        return;
+      }
+
+      notifyPatchDetected(config.projectId);
+      logger.success('Valid patch format detected. Processing...');
+      await processPatch(config, parsedResponse);
+      logger.info('--------------------------------------------------');
+      logger.info('Watching for next patch...');
+    });
+  };
+
+  const handleConfigChange = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      logger.info(`Configuration file change detected. Reloading...`);
+      try {
+        const newConfig = await findConfig();
+        if (newConfig) {
+          logger.success('Configuration reloaded. Restarting services...');
+          startServices(newConfig);
+        } else {
+          logger.error(`${CONFIG_FILE_NAME} is invalid or has been deleted. Services paused.`);
+          if (clipboardWatcher) {
+            clipboardWatcher.stop();
+            clipboardWatcher = null;
+          }
+        }
+      } catch (error) {
+        logger.error(`Error reloading configuration: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }, 250);
+  };
+
+  // Initial startup
+  const initialConfig = await findConfig();
+  if (!initialConfig) {
     logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
     logger.info("Please run 'relay init' to create one.");
     process.exit(1);
   }
-  
-  logger.setLevel(config.logLevel);
+
   logger.success('Configuration loaded. Starting relaycode watch...');
-  logger.debug(`Log level set to: ${config.logLevel}`);
-  logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+  startServices(initialConfig);
 
-  // Display the system prompt
-  logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
-
-  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
-    logger.info('New clipboard content detected. Attempting to parse...');
-    const parsedResponse = parseLLMResponse(content);
-
-    if (!parsedResponse) {
-      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
-      return;
-    }
-    
-    notifyPatchDetected(config.projectId);
-    logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse);
-    logger.info('--------------------------------------------------');
-    logger.info('Watching for next patch...');
-  });
+  // Watch for changes after initial setup
+  fs.watch(configPath, handleConfigChange);
 };
