@@ -40,8 +40,13 @@
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
       "REQUIREMENT.md",
-      // "test",
-      "test/fixtures"
+      "test/e2e/patcher.test.ts",
+      "test/e2e/transaction.test.ts",
+      "test/e2e/watch.test.ts",
+      "test/e2e/init.test.ts",
+      "test/fixtures",
+      "test/unit",
+      "src/utils"
     ]
   },
   "security": {

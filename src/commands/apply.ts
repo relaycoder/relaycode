@@ -5,11 +5,8 @@ import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 
-export const applyCommand = async (filePath: string): Promise<void> => {
-    const cwd = process.cwd();
-
+export const applyCommand = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
     const config = await loadConfigOrExit(cwd);
-    
     logger.setLevel(config.logLevel);
 
     let content: string;
@@ -18,8 +15,8 @@ export const applyCommand = async (filePath: string): Promise<void> => {
         content = await fs.readFile(absoluteFilePath, 'utf-8');
         logger.info(`Reading patch from file: ${absoluteFilePath}`);
     } catch (error) {
-        logger.error(`Failed to read patch file at '${absoluteFilePath}': ${error instanceof Error ? error.message : String(error)}`);
-        process.exit(1);
+        logger.error(`Failed to read patch file at '${absoluteFilePath}'. Aborting.`);
+        return;
     }
 
     logger.info('Attempting to parse patch file...');
