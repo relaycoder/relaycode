@@ -14,6 +14,11 @@ const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string
   return path.join(getStateDirectory(cwd), fileName);
 };
 
+const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
+  const fileName = `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd),'undone', fileName);
+};
+
 // Ensure state directory exists with caching for performance
 const ensureStateDirectory = async (cwd: string): Promise<void> => {
   const dirPath = getStateDirectory(cwd);
@@ -25,13 +30,19 @@ const ensureStateDirectory = async (cwd: string): Promise<void> => {
 
 export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
   const committedPath = getStateFilePath(cwd, uuid, false);
+  const undonePath = getUndoneStateFilePath(cwd,uuid);
   try {
     // Only check for a committed state file.
     // This allows re-processing a transaction that failed and left an orphaned .pending.yml
     await fs.access(committedPath);
     return true;
   } catch (e) {
-    return false;
+    try {
+      await fs.access(undonePath);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 };
 

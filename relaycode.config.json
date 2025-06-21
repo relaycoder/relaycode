@@ -7,5 +7,5 @@
   "linter": "bun tsc -b --noEmit",
   "preCommand": "",
   "postCommand": "",
-  "preferredStrategy": "replace"
+  "preferredStrategy": "auto"
 }
