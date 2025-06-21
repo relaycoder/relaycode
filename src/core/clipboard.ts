@@ -7,33 +7,6 @@ import { execSync } from 'child_process';
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
 
-// Custom clipboard reader that falls back to our local executable
-const createFallbackClipboardReader = (suppressWarnings = false): ClipboardReader => {
-  return async () => {
-    try {
-      // Try the clipboardy module first
-      return await clipboardy.read();
-    } catch (error) {
-      if (!suppressWarnings) {
-        logger.warn('Clipboardy module failed, trying fallback executable');
-      }
-      
-      // Fall back to our local executable
-      try {
-        const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-        if (fs.existsSync(localExePath)) {
-          const result = execSync(`"${localExePath}" --paste`, { encoding: 'utf8' });
-          return result;
-        }
-      } catch (fallbackError) {
-        throw new Error(`Clipboard read failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-      }
-      
-      // If we got here, both methods failed
-      throw error;
-    }
-  };
-};
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {

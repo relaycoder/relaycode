@@ -2,10 +2,12 @@ import { describe, it, expect } from 'bun:test';
 import { parseLLMResponse } from '../../src/core/parser';
 import { v4 as uuidv4 } from 'uuid';
 import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock } from '../test.util';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 describe('core/parser', () => {
 
-    describe('parseLLMResponse', () => {
+    describe('legacy tests', () => {
         const testUuid = uuidv4();
 
         it('should return null if YAML block is missing', () => {
@@ -224,6 +226,141 @@ ${content}
             `;
             const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
             expect(parseLLMResponse(response)).toBeNull();
+        });
+    });
+
+    describe('from fixtures', () => {
+        const fixturesDir = path.resolve(__dirname, '../fixtures');
+
+        const readFixture = (name: string) => fs.readFile(path.join(fixturesDir, name), 'utf-8');
+
+        it('should correctly parse multi-search-replace.md', async () => {
+            const content = await readFixture('multi-search-replace.md');
+            const parsed = parseLLMResponse(content);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.projectId).toBe('diff-apply');
+            expect(parsed?.control.uuid).toBe('486a43f8-874e-4f16-832f-b2fd3769c36c');
+            expect(parsed?.operations).toHaveLength(1);
+
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.path).toBe('package.json');
+                expect(op.patchStrategy).toBe('multi-search-replace');
+                expect(op.content).toContain('<<<<<<< SEARCH');
+                expect(op.content).toContain('>>>>>>> REPLACE');
+                expect(op.content).toContain('"name": "diff-patcher"');
+            }
+            expect(parsed?.reasoning.join(' ')).toContain("I will update the `package.json` file");
+        });
+
+        it('should correctly parse replace-with-markers.md', async () => {
+            const content = await readFixture('replace-with-markers.md');
+            const parsed = parseLLMResponse(content);
+            const expectedContent = `export const newFunction = () => {\n    console.log("new file");\n};`;
+            
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe('1c8a41a8-20d7-4663-856e-9ebd03f7a1e1');
+            expect(parsed?.operations).toHaveLength(1);
+
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.path).toBe('src/new.ts');
+                expect(op.patchStrategy).toBe('replace');
+                expect(op.content).toBe(expectedContent);
+                expect(op.content).not.toContain('// START');
+                expect(op.content).not.toContain('// END');
+            }
+        });
+
+        it('should correctly parse replace-no-markers.md', async () => {
+            const content = await readFixture('replace-no-markers.md');
+            const parsed = parseLLMResponse(content);
+            const expectedContent = `export const newFunction = () => {\n    console.log("new file");\n};`;
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(1);
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.path).toBe('src/new.ts');
+                expect(op.patchStrategy).toBe('replace');
+                expect(op.content).toBe(expectedContent);
+            }
+        });
+
+        it('should correctly parse new-unified.md', async () => {
+            const content = await readFixture('new-unified.md');
+            const parsed = parseLLMResponse(content);
+            const expectedContent = `--- a/src/utils.ts\n+++ b/src/utils.ts\n@@ -1,3 +1,3 @@\n-export function greet(name: string) {\n-  return \`Hello, \${name}!\`;\n+export function greet(name: string, enthusiasm: number) {\n+  return \`Hello, \${name}\` + '!'.repeat(enthusiasm);\n }`;
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(1);
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.path).toBe('src/utils.ts');
+                expect(op.patchStrategy).toBe('new-unified');
+                expect(op.content.trim()).toBe(expectedContent.trim());
+            }
+        });
+
+        it('should correctly parse delete-file.md', async () => {
+            const content = await readFixture('delete-file.md');
+            const parsed = parseLLMResponse(content);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(1);
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('delete');
+            if (op.type === 'delete') {
+                expect(op.path).toBe('src/old-helper.ts');
+            }
+            expect(parsed?.reasoning.join(' ')).toContain("I'm removing the old helper file.");
+        });
+
+        it('should correctly parse path-with-spaces.md', async () => {
+            const content = await readFixture('path-with-spaces.md');
+            const parsed = parseLLMResponse(content);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.operations).toHaveLength(1);
+            const op = parsed!.operations[0];
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.path).toBe('src/components/My Component.tsx');
+            }
+        });
+        
+        it('should correctly parse multiple-ops.md', async () => {
+            const content = await readFixture('multiple-ops.md');
+            const parsed = parseLLMResponse(content);
+
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe('5e1a41d8-64a7-4663-c56e-3ebd03f7a1f5');
+            expect(parsed?.operations).toHaveLength(3);
+
+            expect(parsed?.operations).toContainEqual({
+                type: 'write',
+                path: 'src/main.ts',
+                content: 'console.log("Updated main");',
+                patchStrategy: 'replace'
+            });
+
+            expect(parsed?.operations).toContainEqual({
+                type: 'delete',
+                path: 'src/utils.ts',
+            });
+            
+            const newOp = parsed?.operations.find(op => op.path.includes('New Component'));
+            expect(newOp).toBeDefined();
+            expect(newOp?.type).toBe('write');
+            if (newOp?.type === 'write') {
+                expect(newOp.patchStrategy).toBe('new-unified');
+                expect(newOp.path).toBe('src/components/New Component.tsx');
+            }
         });
     });
 });
