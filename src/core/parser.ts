@@ -137,12 +137,20 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             }
 
             if (!strategyProvided) {
-                if (content.includes('<<<<<<< SEARCH')) {
+                // Check for multi-search-replace format with a more precise pattern
+                // Looking for the exact pattern at the start of a line
+                if (/^<<<<<<< SEARCH\s*$/m.test(content)) {
                     patchStrategy = 'multi-search-replace';
                     logger.debug('Inferred patch strategy: multi-search-replace');
-                } else if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) {
+                } 
+                // Check for new-unified format with more precise pattern
+                else if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) {
                     patchStrategy = 'new-unified';
                     logger.debug('Inferred patch strategy: new-unified');
+                }
+                // If neither pattern is detected, keep the default 'replace' strategy
+                else {
+                    logger.debug('No specific patch format detected, using default replace strategy');
                 }
             }
 

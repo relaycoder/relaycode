@@ -286,4 +286,6 @@ add test cases about below features to verify implementation
 - relay apply
 - relay log
 - relay revert
+- File Rename/Move
+- Automatic Patch Strategy Detection:  Relaycode could inspect its content to infer the strategy.
 

@@ -231,7 +231,30 @@ ${content}
             expect(parsed!.operations).toHaveLength(1);
             const op = parsed!.operations[0]!;
             expect(op.type).toBe('write');
-            expect(op.path).toBe(fullPath);
+            if (op.type === 'write' || op.type === 'delete') {
+                expect(op.path).toBe(fullPath);
+            }
+        });
+
+        it('should not detect multi-search-replace when <<<<<<< SEARCH appears in the middle of content', () => {
+            const filePath = 'src/example.ts';
+            // Content contains the marker as part of a string or comment, not at the start of a line
+            const content = `
+// This is a code example showing a marker: <<<<<<< SEARCH in a comment
+const example = "This is not a real <<<<<<< SEARCH marker";
+console.log(example);
+            `;
+            const block = createFileBlock(filePath, content);
+            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
+            const parsed = parseLLMResponse(response);
+            
+            expect(parsed).not.toBeNull();
+            expect(parsed!.operations).toHaveLength(1);
+            const op = parsed!.operations[0]!;
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.patchStrategy).toBe('replace'); // Should be 'replace', not 'multi-search-replace'
+            }
         });
     });
 

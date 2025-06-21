@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 everything you do about elysiajs whether creating, modifying or fixing or even strugling, should be based on latest doc via context7 mcp.
 

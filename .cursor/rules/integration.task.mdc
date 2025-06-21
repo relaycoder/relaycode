@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 Analyze `*.hook.ts` files and the relevant Drizzle schemas. because some hook still not integrated with service
 
