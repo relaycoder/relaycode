@@ -5,6 +5,7 @@ import { watchCommand } from './commands/watch';
 import { logCommand } from './commands/log';
 import { undoCommand } from './commands/undo';
 import { revertCommand } from './commands/revert';
+import { applyCommand } from './commands/apply';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -72,6 +73,12 @@ program
   .command('watch')
   .description('Starts watching the clipboard for code changes to apply.')
   .action(watchCommand);
+
+program
+  .command('apply')
+  .description('Applies a patch from a specified file.')
+  .argument('<filePath>', 'The path to the file containing the patch.')
+  .action(applyCommand);
 
 program
   .command('log')
