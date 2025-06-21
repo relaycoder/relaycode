@@ -4,109 +4,25 @@ import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '..
 import { logger } from '../utils/logger';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
 
-const getSystemPrompt = (projectId: string): string => `
+const getInitMessage = (projectId: string): string => `
 ✅ relaycode has been initialized for this project.
 
-IMPORTANT: For relaycode to work, you must configure your AI assistant.
-Copy the entire text below and paste it into your LLM's "System Prompt"
-or "Custom Instructions" section.
----------------------------------------------------------------------------
+Configuration file created: ${CONFIG_FILE_NAME}
 
-You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
+Project ID: ${projectId}
 
-**Syntax:**
-\`\`\`typescript // filePath {patchStrategy}
-... content ...
-\`\`\`
-- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
-- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
+Next steps:
+1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
+   - 'auto' (default): The AI can choose the best patch strategy.
+   - 'new-unified': Forces the AI to use diffs, great for most changes.
+   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
+   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
 
-**Examples:**
-\`\`\`typescript // src/components/Button.tsx
-...
-\`\`\`
-\`\`\`typescript // "src/components/My Component.tsx" new-unified
-...
-\`\`\`
+2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
 
----
-
-### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
-
-Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
-
-**Diff Format:**
-1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
-2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
-3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
-4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
-
-**Example:**
-\`\`\`diff
---- src/utils.ts
-+++ src/utils.ts
-@@ ... @@
-    function calculateTotal(items: number[]): number {
--      return items.reduce((sum, item) => {
--        return sum + item;
--      }, 0);
-+      const total = items.reduce((sum, item) => {
-+        return sum + item * 1.1;  // Add 10% markup
-+      }, 0);
-+      return Math.round(total * 100) / 100;  // Round to 2 decimal places
-+    }
-\`\`\`
-
----
-
-### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
-
-Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
-
-**Diff Format:**
-Repeat this block for each replacement.
-\`\`\`diff
-<<<<<<< SEARCH
-:start_line: (optional)
-:end_line: (optional)
--------
-[exact content to find including whitespace]
-=======
-[new content to replace with]
->>>>>>> REPLACE
-\`\`\`
-
----
-
-### Other Operations
-
--   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
--   **Deleting a file**:
-    \`\`\`typescript // path/to/file.ts
-    //TODO: delete this file
-    \`\`\`
-    \`\`\`typescript // "path/to/My Old Component.ts"
-    //TODO: delete this file
-    \`\`\`
-
----
-
-### Final Steps
-
-1.  Add your step-by-step reasoning in plain text before each code block.
-2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
-
-    \`\`\`yaml
-    projectId: ${projectId}
-    uuid: (generate a random uuid)
-    changeSummary:
-      - edit: src/main.ts
-      - new: src/components/Button.tsx
-      - delete: src/utils/old-helper.ts
-    \`\`\`
----------------------------------------------------------------------------
-You are now ready to run 'relay watch' in your terminal.
+3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
 `;
+
 
 const updateGitignore = async (cwd: string): Promise<void> => {
     const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
@@ -135,7 +51,11 @@ export const initCommand = async (cwd: string = process.cwd()): Promise<void> =>
     const config = await findConfig(cwd);
     if (config) {
         logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        logger.log(getSystemPrompt(config.projectId));
+        logger.log(`
+To use relaycode, please run 'relay watch'.
+It will display a system prompt to copy into your LLM assistant.
+You can review your configuration in ${CONFIG_FILE_NAME}.
+`);
         return;
     }
     
@@ -148,5 +68,5 @@ export const initCommand = async (cwd: string = process.cwd()): Promise<void> =>
 
     await updateGitignore(cwd);
 
-    logger.log(getSystemPrompt(projectId));
+    logger.log(getInitMessage(projectId));
 };

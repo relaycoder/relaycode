@@ -13,6 +13,7 @@ export const ConfigSchema = z.object({
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
+  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

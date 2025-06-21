@@ -1,8 +1,8 @@
-I've implemented the logging levels as requested. Here are the code changes:
+Hello! As an expert AI programmer, I'd be happy to help you with your request. Adding a `preferredStrategy` to the configuration is a great idea for optimizing token usage and tailoring the AI's behavior. Here are the necessary code changes to implement this feature.
 
-I've introduced a `logLevel` setting in your `relaycode.config.json` which can be set to `'silent'`, `'error'`, `'warn'`, `'info'`, or `'debug'`. The default is `'info'`. I've updated the logger to respect this setting and converted verbose logs (like those in the parser) to the `'debug'` level.
+I've updated the `init` command to provide guidance on the new configuration and adjusted the `watch` command to generate and display the system prompt based on your settings.
 
-Here are the affected files:
+### File Changes:
 
 ```typescript // src/types.ts
 import { z } from 'zod';
@@ -20,6 +20,7 @@ export const ConfigSchema = z.object({
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
+  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -86,65 +87,7 @@ export const ShellCommandResultSchema = z.object({
 });
 export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
 ```
-```typescript // src/utils/logger.ts
-import chalk from 'chalk';
-import { LogLevelName } from '../types';
 
-const LogLevels = {
-  silent: 0,
-  error: 1,
-  warn: 2,
-  info: 3,
-  debug: 4,
-} as const;
-
-let currentLogLevel: LogLevelName = 'info'; // Default level
-
-export const logger = {
-  setLevel: (level: LogLevelName) => {
-    if (level in LogLevels) {
-      currentLogLevel = level;
-    }
-  },
-  info: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.blue(message));
-    }
-  },
-  success: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.green(message));
-    }
-  },
-  warn: (message: string) => {
-    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
-      console.log(chalk.yellow(message));
-    }
-  },
-  error: (message: string) => {
-    if (LogLevels.error <= LogLevels[currentLogLevel]) {
-      console.log(chalk.red(message));
-    }
-  },
-  debug: (message: string) => {
-    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
-      console.log(chalk.gray(message));
-    }
-  },
-  log: (message: string) => {
-    // General log, treat as info
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(message);
-    }
-  },
-  prompt: (message: string) => {
-    // Prompts are special and should be shown unless silent
-    if (currentLogLevel !== 'silent') {
-      console.log(chalk.cyan(message));
-    }
-  },
-};
-```
 ```typescript // src/core/config.ts
 import { z } from 'zod';
 import path from 'path';
@@ -178,6 +121,7 @@ export const createConfig = async (projectId: string, cwd: string = process.cwd(
         linter: 'bun tsc --noEmit',
         preCommand: '',
         postCommand: '',
+        preferredStrategy: 'auto' as const,
     };
     
     // Ensure the schema defaults are applied, including for logLevel
@@ -208,6 +152,82 @@ export const getProjectId = async (cwd: string = process.cwd()): Promise<string>
     return path.basename(cwd);
 };
 ```
+
+```typescript // src/commands/init.ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
+
+const getInitMessage = (projectId: string): string => `
+✅ relaycode has been initialized for this project.
+
+Configuration file created: ${CONFIG_FILE_NAME}
+
+Project ID: ${projectId}
+
+Next steps:
+1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
+   - 'auto' (default): The AI can choose the best patch strategy.
+   - 'new-unified': Forces the AI to use diffs, great for most changes.
+   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
+   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
+
+2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
+
+3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
+`;
+
+
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
+    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+
+    try {
+        let content = await fs.readFile(gitignorePath, 'utf-8');
+        if (!content.includes(STATE_DIRECTORY_NAME)) {
+            content += entry;
+            await fs.writeFile(gitignorePath, content);
+            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            await fs.writeFile(gitignorePath, entry.trim());
+            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+        } else {
+            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+};
+
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    logger.info('Initializing relaycode in this project...');
+
+    const config = await findConfig(cwd);
+    if (config) {
+        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.log(`
+To use relaycode, please run 'relay watch'.
+It will display a system prompt to copy into your LLM assistant.
+You can review your configuration in ${CONFIG_FILE_NAME}.
+`);
+        return;
+    }
+    
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
+    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
+    
+    await ensureStateDirExists(cwd);
+    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
+
+    await updateGitignore(cwd);
+
+    logger.log(getInitMessage(projectId));
+};
+```
+
 ```typescript // src/commands/watch.ts
 import { findConfig } from '../core/config';
 import { createClipboardWatcher } from '../core/clipboard';
@@ -216,6 +236,166 @@ import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import { CONFIG_FILE_NAME } from '../utils/constants';
 import { notifyPatchDetected } from '../utils/notifier';
+import { Config } from '../types';
+
+const getSystemPrompt = (projectId: string, preferredStrategy: Config['preferredStrategy']): string => {
+    const header = `
+✅ relaycode is watching for changes.
+
+IMPORTANT: For relaycode to work, you must configure your AI assistant.
+Copy the entire text below and paste it into your LLM's "System Prompt"
+or "Custom Instructions" section.
+---------------------------------------------------------------------------`;
+
+    const intro = `You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.`;
+
+    const syntaxAuto = `
+**Syntax:**
+\`\`\`typescript // filePath {patchStrategy}
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
+
+**Examples:**
+\`\`\`typescript // src/components/Button.tsx
+...
+\`\`\`
+\`\`\`typescript // "src/components/My Component.tsx" new-unified
+...
+\`\`\``;
+
+    const syntaxReplace = `
+**Syntax:**
+\`\`\`typescript // filePath
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- Only the \`replace\` strategy is enabled. This means you must provide the ENTIRE file content for any change. This is suitable for creating new files or making changes to small files.`;
+
+    const syntaxNewUnified = `
+**Syntax:**
+\`\`\`typescript // filePath new-unified
+... diff content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- You must use the \`new-unified\` patch strategy for all modifications.`;
+
+    const syntaxMultiSearchReplace = `
+**Syntax:**
+\`\`\`typescript // filePath multi-search-replace
+... diff content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- You must use the \`multi-search-replace\` patch strategy for all modifications.`;
+
+    const sectionNewUnified = `---
+
+### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
+
+Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
+
+**Diff Format:**
+1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
+2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
+3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
+4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
+
+**Example:**
+\`\`\`diff
+--- src/utils.ts
++++ src/utils.ts
+@@ ... @@
+    function calculateTotal(items: number[]): number {
+-      return items.reduce((sum, item) => {
+-        return sum + item;
+-      }, 0);
++      const total = items.reduce((sum, item) => {
++        return sum + item * 1.1;  // Add 10% markup
++      }, 0);
++      return Math.round(total * 100) / 100;  // Round to 2 decimal places
++    }
+\`\`\`
+`;
+
+    const sectionMultiSearchReplace = `---
+
+### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
+
+Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
+
+**Diff Format:**
+Repeat this block for each replacement.
+\`\`\`diff
+<<<<<<< SEARCH
+:start_line: (optional)
+:end_line: (optional)
+-------
+[exact content to find including whitespace]
+=======
+[new content to replace with]
+>>>>>>> REPLACE
+\`\`\`
+`;
+
+    const otherOps = `---
+
+### Other Operations
+
+-   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
+-   **Deleting a file**:
+    \`\`\`typescript // path/to/file.ts
+    //TODO: delete this file
+    \`\`\`
+    \`\`\`typescript // "path/to/My Old Component.ts"
+    //TODO: delete this file
+    \`\`\`
+`;
+
+    const finalSteps = `---
+
+### Final Steps
+
+1.  Add your step-by-step reasoning in plain text before each code block.
+2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
+
+    \`\`\`yaml
+    projectId: ${projectId}
+    uuid: (generate a random uuid)
+    changeSummary:
+      - edit: src/main.ts
+      - new: src/components/Button.tsx
+      - delete: src/utils/old-helper.ts
+    \`\`\`
+`;
+    
+    const footer = `---------------------------------------------------------------------------`;
+
+    let syntax = '';
+    let strategyDetails = '';
+
+    switch (preferredStrategy) {
+        case 'replace':
+            syntax = syntaxReplace;
+            strategyDetails = ''; // Covered in 'otherOps'
+            break;
+        case 'new-unified':
+            syntax = syntaxNewUnified;
+            strategyDetails = sectionNewUnified;
+            break;
+        case 'multi-search-replace':
+            syntax = syntaxMultiSearchReplace;
+            strategyDetails = sectionMultiSearchReplace;
+            break;
+        case 'auto':
+        default:
+            syntax = syntaxAuto;
+            strategyDetails = `${sectionNewUnified}\n${sectionMultiSearchReplace}`;
+            break;
+    }
+
+    return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
+}
 
 export const watchCommand = async (): Promise<void> => {
   const config = await findConfig();
@@ -229,6 +409,10 @@ export const watchCommand = async (): Promise<void> => {
   logger.setLevel(config.logLevel);
   logger.success('Configuration loaded. Starting relaycode watch...');
   logger.debug(`Log level set to: ${config.logLevel}`);
+  logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+
+  // Display the system prompt
+  logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
 
   createClipboardWatcher(config.clipboardPollInterval, async (content) => {
     logger.info('New clipboard content detected. Attempting to parse...');
@@ -245,236 +429,5 @@ export const watchCommand = async (): Promise<void> => {
     logger.info('--------------------------------------------------');
     logger.info('Watching for next patch...');
   });
-};
-```
-```typescript // src/utils/shell.ts
-import { exec } from 'child_process';
-import path from 'path';
-import { logger } from './logger';
-
-type ExecutionResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
-
-export const executeShellCommand = (command: string, cwd = process.cwd()): Promise<ExecutionResult> => {
-  if (!command || command.trim() === '') {
-    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
-  }
-
-  // Normalize path for Windows environments
-  const normalizedCwd = path.resolve(cwd);
-
-  return new Promise((resolve) => {
-    // On Windows, make sure to use cmd.exe or PowerShell to execute command
-    const isWindows = process.platform === 'win32';
-    const finalCommand = isWindows 
-      ? `powershell -Command "${command.replace(/"/g, '\\"')}"`
-      : command;
-      
-    logger.debug(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
-    
-    exec(finalCommand, { cwd: normalizedCwd }, (error, stdout, stderr) => {
-      const exitCode = error ? error.code || 1 : 0;
-      
-      resolve({
-        exitCode,
-        stdout: stdout.toString().trim(),
-        stderr: stderr.toString().trim(),
-      });
-    });
-  });
-};
-
-export const getErrorCount = async (linterCommand: string, cwd = process.cwd()): Promise<number> => {
-  if (!linterCommand || linterCommand.trim() === '') {
-    return 0;
-  }
-  
-  const { exitCode, stderr } = await executeShellCommand(linterCommand, cwd);
-  if (exitCode === 0) return 0;
-
-  // Try to extract a number of errors from stderr or assume 1 if non-zero exit code
-  const errorMatches = stderr.match(/(\d+) error/i);
-  if (errorMatches && errorMatches[1]) {
-    return parseInt(errorMatches[1], 10);
-  }
-  return exitCode === 0 ? 0 : 1;
-};
-```
-```typescript // src/core/parser.ts
-import yaml from 'js-yaml';
-import { z } from 'zod';
-import {
-    ControlYamlSchema,
-    FileOperation,
-    ParsedLLMResponse,
-    ParsedLLMResponseSchema,
-    PatchStrategy,
-    PatchStrategySchema,
-} from '../types';
-import {
-    CODE_BLOCK_START_MARKER,
-    CODE_BLOCK_END_MARKER,
-    DELETE_FILE_MARKER
-} from '../utils/constants';
-import { logger } from '../utils/logger';
-
-const CODE_BLOCK_REGEX = /```(?:\w+)?(?:\s*\/\/\s*(.*?)|\s+(.*?))?[\r\n]([\s\S]*?)[\r\n]```/g;
-const YAML_BLOCK_REGEX = /```yaml[\r\n]([\s\S]+?)```/;
-
-const extractCodeBetweenMarkers = (content: string): string => {
-    const startMarkerIndex = content.indexOf(CODE_BLOCK_START_MARKER);
-    const endMarkerIndex = content.lastIndexOf(CODE_BLOCK_END_MARKER);
-
-    if (startMarkerIndex === -1 || endMarkerIndex === -1 || endMarkerIndex <= startMarkerIndex) {
-        // Normalize line endings to Unix-style \n for consistency
-        return content.trim().replace(/\r\n/g, '\n');
-    }
-
-    const startIndex = startMarkerIndex + CODE_BLOCK_START_MARKER.length;
-    // Normalize line endings to Unix-style \n for consistency
-    return content.substring(startIndex, endMarkerIndex).trim().replace(/\r\n/g, '\n');
-};
-
-export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
-    try {
-        logger.debug('Parsing LLM response...');
-        const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
-        logger.debug(`YAML match: ${yamlMatch ? 'Found' : 'Not found'}`);
-        if (!yamlMatch || typeof yamlMatch[1] !== 'string') {
-            logger.debug('No YAML block found or match[1] is not a string');
-            return null;
-        }
-
-        let control;
-        try {
-            const yamlContent = yaml.load(yamlMatch[1]);
-            logger.debug(`YAML content parsed: ${JSON.stringify(yamlContent)}`);
-            control = ControlYamlSchema.parse(yamlContent);
-            logger.debug(`Control schema parsed: ${JSON.stringify(control)}`);
-        } catch (e) {
-            logger.debug(`Error parsing YAML or control schema: ${e}`);
-            return null;
-        }
-
-        const textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
-        
-        const operations: FileOperation[] = [];
-        const matchedBlocks: string[] = [];
-        
-        let match;
-        logger.debug('Looking for code blocks...');
-        let blockCount = 0;
-        while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
-            blockCount++;
-            logger.debug(`Found code block #${blockCount}`);
-            const [fullMatch, commentHeaderLine, spaceHeaderLine, rawContent] = match;
-
-            // Get the header line from either the comment style or space style
-            const headerLineUntrimmed = commentHeaderLine || spaceHeaderLine || '';
-            
-            if (typeof headerLineUntrimmed !== 'string' || typeof rawContent !== 'string') {
-                logger.debug('Header line or raw content is not a string, skipping');
-                continue;
-            }
-
-            const headerLine = headerLineUntrimmed.trim();
-            if (headerLine === '') {
-                logger.debug('Empty header line, skipping');
-                continue;
-            }
-
-            logger.debug(`Header line: ${headerLine}`);
-            matchedBlocks.push(fullMatch);
-            const content = rawContent.trim();
-            
-            let filePath = '';
-            let patchStrategy: PatchStrategy;
-            
-            const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
-            if (quotedMatch) {
-                filePath = quotedMatch[1]!;
-                const strategyStr = quotedMatch[2] || '';
-                const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
-                if (!parsedStrategy.success) {
-                    logger.debug('Invalid patch strategy for quoted path, skipping');
-                    continue;
-                }
-                patchStrategy = parsedStrategy.data;
-            } else {
-                const parts = headerLine.split(/\s+/);
-                if (parts.length > 1) {
-                    const strategyStr = parts.pop()!;
-                    const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
-                    if (!parsedStrategy.success) {
-                        logger.debug('Invalid patch strategy, skipping');
-                        continue;
-                    }
-                    patchStrategy = parsedStrategy.data;
-                    filePath = parts.join(' ');
-                } else {
-                    filePath = headerLine;
-                    patchStrategy = PatchStrategySchema.parse(undefined);
-                }
-            }
-
-            logger.debug(`File path: ${filePath}`);
-            logger.debug(`Patch strategy: ${patchStrategy}`);
-            
-            if (!filePath) {
-                logger.debug('Empty file path, skipping');
-                continue;
-            }
-
-            if (content === DELETE_FILE_MARKER) {
-                logger.debug(`Adding delete operation for: ${filePath}`);
-                operations.push({ type: 'delete', path: filePath });
-            } else {
-                const cleanContent = extractCodeBetweenMarkers(content);
-                logger.debug(`Adding write operation for: ${filePath}`);
-                operations.push({ 
-                    type: 'write', 
-                    path: filePath, 
-                    content: cleanContent, 
-                    patchStrategy 
-                });
-            }
-        }
-        
-        logger.debug(`Found ${blockCount} code blocks, ${operations.length} operations`);
-        
-        let reasoningText = textWithoutYaml;
-        for (const block of matchedBlocks) {
-            reasoningText = reasoningText.replace(block, '');
-        }
-        const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
-
-        if (operations.length === 0) {
-            logger.debug('No operations found, returning null');
-            return null;
-        }
-
-        try {
-            const parsedResponse = ParsedLLMResponseSchema.parse({
-                control,
-                operations,
-                reasoning,
-            });
-            logger.debug('Successfully parsed LLM response');
-            return parsedResponse;
-        } catch (e) {
-            logger.debug(`Error parsing final response schema: ${e}`);
-            return null;
-        }
-    } catch (e) {
-        if (e instanceof z.ZodError) {
-            logger.debug(`ZodError: ${JSON.stringify(e.errors)}`);
-        } else {
-            logger.debug(`Unexpected error: ${e}`);
-        }
-        return null;
-    }
 };
 ```

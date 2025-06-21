@@ -30,6 +30,7 @@ export const createConfig = async (projectId: string, cwd: string = process.cwd(
         linter: 'bun tsc --noEmit',
         preCommand: '',
         postCommand: '',
+        preferredStrategy: 'auto' as const,
     };
     
     // Ensure the schema defaults are applied, including for logLevel
