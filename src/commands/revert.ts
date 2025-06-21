@@ -5,9 +5,7 @@ import { logger } from '../utils/logger';
 import { FileOperation, ParsedLLMResponse } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-export const revertCommand = async (uuidToRevert: string): Promise<void> => {
-    const cwd = process.cwd();
-
+export const revertCommand = async (uuidToRevert: string, cwd: string = process.cwd()): Promise<void> => {
     const config = await loadConfigOrExit(cwd);
 
     // 2. Load the state file for the transaction to revert
