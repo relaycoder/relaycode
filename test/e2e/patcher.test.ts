@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { processPatch } from '../../src/core/transaction';
-import { parseLLMResponse } from '../../src/core/parser';
-import { setupE2ETest, E2ETestContext, createTestConfig, createTestFile, LLM_RESPONSE_END, createFileBlock } from '../test.util';
+import { setupE2ETest, E2ETestContext, createTestFile, runProcessPatch } from '../test.util';
 
 // NOTE: This test file uses the actual 'diff-apply' dependency, not a mock.
 
@@ -20,7 +17,6 @@ describe('e2e/patcher', () => {
     });
 
     it('should correctly apply a patch using the multi-search-replace strategy', async () => {
-        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/config.js';
         const originalContent = `
 const config = {
@@ -46,14 +42,12 @@ const config = {
 >>>>>>> REPLACE
 `;
         
-        const uuid = uuidv4();
-        const llmResponse = createFileBlock(testFile, diffContent, 'multi-search-replace') + 
-                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
-
-        const parsedResponse = parseLLMResponse(llmResponse);
-        expect(parsedResponse).not.toBeNull();
-
-        await processPatch(config, parsedResponse!, { cwd: context.testDir.path });
+        await runProcessPatch(
+            context,
+            {},
+            [{ type: 'edit', path: testFile, content: diffContent, strategy: 'multi-search-replace' }],
+            { responseOverrides: { reasoning: [] } } // Don't care about reasoning in this test
+        );
 
         const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         
@@ -68,7 +62,6 @@ const config = {
     });
 
     it('should correctly apply a patch using the new-unified strategy', async () => {
-        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/utils.js';
         const originalContent = `function calculate() {
     const a = 1;
@@ -87,14 +80,12 @@ const config = {
 +    return (a + b) * 2;
  }`;
         
-        const uuid = uuidv4();
-        const llmResponse = createFileBlock(testFile, diffContent, 'new-unified') + 
-                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
-
-        const parsedResponse = parseLLMResponse(llmResponse);
-        expect(parsedResponse).not.toBeNull();
-
-        await processPatch(config, parsedResponse!, { cwd: context.testDir.path });
+        await runProcessPatch(
+            context,
+            {},
+            [{ type: 'edit', path: testFile, content: diffContent, strategy: 'new-unified' }],
+            { responseOverrides: { reasoning: [] } } // Don't care about reasoning
+        );
 
         const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         
@@ -110,7 +101,6 @@ const config = {
 
 
     it('should fail transaction if multi-search-replace content is not found', async () => {
-        const config = await createTestConfig(context.testDir.path);
         const testFile = 'src/index.js';
         const originalContent = 'const version = 1;';
         await createTestFile(context.testDir.path, testFile, originalContent);
@@ -123,13 +113,12 @@ const version = 2; // This content does not exist
 const version = 3;
 >>>>>>> REPLACE
 `;
-        const uuid = uuidv4();
-        const llmResponse = createFileBlock(testFile, diffContent, 'multi-search-replace') + 
-                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
-        
-        const parsedResponse = parseLLMResponse(llmResponse)!;
-
-        await processPatch(config, parsedResponse, { cwd: context.testDir.path });
+        const { uuid } = await runProcessPatch(
+            context,
+            {},
+            [{ type: 'edit', path: testFile, content: diffContent, strategy: 'multi-search-replace' }],
+            { responseOverrides: { reasoning: [] } }
+        );
 
         // The file content should remain unchanged
         const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');

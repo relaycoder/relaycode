@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { createClipboardWatcher } from '../../src/core/clipboard';
 import { parseLLMResponse } from '../../src/core/parser';
 import { processPatch } from '../../src/core/transaction';
 import { findConfig } from '../../src/core/config';
-import { setupE2ETest, E2ETestContext, createTestConfig, createTestFile, createFileBlock, LLM_RESPONSE_END, LLM_RESPONSE_START } from '../test.util';
+import { setupE2ETest, E2ETestContext, createTestConfig, createTestFile, createLLMResponseString } from '../test.util';
 
 describe('e2e/watch', () => {
     let context: E2ETestContext;
@@ -60,10 +59,9 @@ describe('e2e/watch', () => {
     
         // Now, provide a valid patch
         const newContent = 'console.log("new content");';
-        const uuid = uuidv4();
-        const validPatch = LLM_RESPONSE_START + 
-                           createFileBlock(testFile, newContent) + 
-                           LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
+        const { response: validPatch } = createLLMResponseString([
+            { type: 'edit', path: testFile, content: newContent }
+        ]);
         fakeClipboardContent = validPatch;
 
         // Directly trigger the callback with the valid patch

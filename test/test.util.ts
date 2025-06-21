@@ -1,10 +1,14 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { v4 as uuidv4 } from 'uuid';
 import { Config, PatchStrategy } from '../src/types';
 import { CONFIG_FILE_NAME } from '../src/utils/constants';
 import { logger } from '../src/utils/logger';
+import { processPatch } from '../src/core/transaction';
+import { parseLLMResponse } from '../src/core/parser';
 
+export type Prompter = (message: string) => Promise<boolean>;
 export interface TestDir {
     path: string;
     cleanup: () => Promise<void>;
@@ -72,6 +76,59 @@ export const setupE2ETest = async (options: { withTsconfig?: boolean } = {}): Pr
     return { testDir, cleanup };
 };
 
+export interface TestOperation {
+    type: 'edit' | 'new' | 'delete';
+    path: string;
+    content?: string;
+    strategy?: PatchStrategy;
+}
+
+export function createLLMResponseString(
+    operations: TestOperation[],
+    overrides: { uuid?: string, projectId?: string, reasoning?: string[] } = {}
+): { response: string, uuid: string } {
+    const uuid = overrides.uuid ?? uuidv4();
+    const projectId = overrides.projectId ?? 'test-project';
+    const reasoning = overrides.reasoning ?? [LLM_RESPONSE_START];
+
+    const blocks = operations.map(op => {
+        if (op.type === 'delete') {
+            return createDeleteFileBlock(op.path);
+        }
+        return createFileBlock(op.path, op.content ?? '', op.strategy);
+    });
+
+    const changeSummary = operations.map(op => ({ [op.type]: op.path }));
+
+    const response = [
+        ...reasoning,
+        ...blocks,
+        LLM_RESPONSE_END(uuid, changeSummary, projectId)
+    ].join('\n');
+
+    return { response, uuid };
+}
+
+export async function runProcessPatch(
+    context: E2ETestContext,
+    configOverrides: Partial<Config>,
+    operations: TestOperation[],
+    options: { prompter?: Prompter, responseOverrides?: { uuid?: string, projectId?: string, reasoning?: string[] } } = {}
+): Promise<{ uuid: string; config: Config }> {
+    const config = await createTestConfig(context.testDir.path, configOverrides);
+    
+    const { response, uuid } = createLLMResponseString(operations, { ...options.responseOverrides, projectId: options.responseOverrides?.projectId ?? config.projectId });
+
+    const parsedResponse = parseLLMResponse(response);
+    if (!parsedResponse) {
+        throw new Error("Failed to parse mock LLM response");
+    }
+
+    await processPatch(config, parsedResponse, { prompter: options.prompter, cwd: context.testDir.path });
+    
+    return { uuid, config };
+}
+
 
 export const createTestConfig = async (cwd: string, overrides: Partial<Config> = {}): Promise<Config> => {
     const defaultConfig: Config = {
@@ -82,6 +139,8 @@ export const createTestConfig = async (cwd: string, overrides: Partial<Config> =
         linter: `bun -e "process.exit(0)"`, // A command that always succeeds
         preCommand: '',
         postCommand: '',
+        logLevel: 'info',
+        preferredStrategy: 'auto',
     };
     const config = { ...defaultConfig, ...overrides };
     await fs.writeFile(path.join(cwd, CONFIG_FILE_NAME), JSON.stringify(config, null, 2));
@@ -100,9 +159,9 @@ I have analyzed your request and here are the changes.
 First, I will edit the main file.
 `;
 
-export const LLM_RESPONSE_END = (uuid: string, changeSummary: { [key: string]: string }[]) => `
+export const LLM_RESPONSE_END = (uuid: string, changeSummary: { [key: string]: string }[] = [], projectId: string = 'test-project') => `
 \`\`\`yaml
-projectId: test-project
+projectId: ${projectId}
 uuid: ${uuid}
 changeSummary: ${JSON.stringify(changeSummary)}
 \`\`\`

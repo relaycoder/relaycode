@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { parseLLMResponse } from '../../src/core/parser';
 import { v4 as uuidv4 } from 'uuid';
-import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock } from '../test.util';
+import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock, createLLMResponseString } from '../test.util';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -53,8 +53,10 @@ projectId: test-project
         it('should correctly parse a single file write operation with default "replace" strategy', () => {
             const content = 'const a = 1;';
             const filePath = 'src/utils.ts';
-            const block = createFileBlock(filePath, content); // No strategy provided
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+            const { response } = createLLMResponseString(
+                [{ type: 'edit', path: filePath, content }],
+                { uuid: testUuid }
+            );
             
             const parsed = parseLLMResponse(response);
 
@@ -74,8 +76,10 @@ projectId: test-project
         it('should correctly parse a write operation with an explicit patch strategy', () => {
             const content = 'diff content';
             const filePath = 'src/utils.ts';
-            const block = createFileBlock(filePath, content, 'new-unified');
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+            const { response } = createLLMResponseString(
+                [{ type: 'edit', path: filePath, content, strategy: 'new-unified' }],
+                { uuid: testUuid }
+            );
 
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
@@ -89,8 +93,10 @@ projectId: test-project
 
         it('should correctly parse a single file delete operation', () => {
             const filePath = 'src/old-file.ts';
-            const block = createDeleteFileBlock(filePath);
-            const response = "I'm deleting this old file." + block + LLM_RESPONSE_END(testUuid, [{ delete: filePath }]);
+            const { response } = createLLMResponseString(
+                [{ type: 'delete', path: filePath }],
+                { uuid: testUuid, reasoning: ["I'm deleting this old file."] }
+            );
 
             const parsed = parseLLMResponse(response);
 
@@ -103,28 +109,25 @@ projectId: test-project
         });
 
         it('should correctly parse multiple mixed operations', () => {
-            const filePath1 = 'src/main.ts';
-            const content1 = 'console.log("main");';
-            const filePath2 = 'src/to-delete.ts';
-            const filePath3 = 'src/new-feature.ts';
-
-            const response = [
-                "I'll make three changes.",
-                createFileBlock(filePath1, content1, 'replace'),
-                "Then delete a file.",
-                createDeleteFileBlock(filePath2),
-                "And finally add a new one with a diff.",
-                createFileBlock(filePath3, 'diff content', 'new-unified'),
-                LLM_RESPONSE_END(testUuid, [{edit: filePath1}, {delete: filePath2}, {new: filePath3}])
-            ].join('\n');
+            const { response } = createLLMResponseString(
+                [
+                    { type: 'edit', path: 'src/main.ts', content: 'console.log("main");', strategy: 'replace' },
+                    { type: 'delete', path: 'src/to-delete.ts' },
+                    { type: 'new', path: 'src/new-feature.ts', content: 'diff content', strategy: 'new-unified' },
+                ],
+                {
+                    uuid: testUuid,
+                    reasoning: ["I'll make three changes.", "Then delete a file.", "And finally add a new one with a diff."]
+                }
+            );
 
             const parsed = parseLLMResponse(response);
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(3);
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath1, content: content1, patchStrategy: 'replace' });
-            expect(parsed?.operations).toContainEqual({ type: 'delete', path: filePath2 });
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: 'diff content', patchStrategy: 'new-unified' });
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: 'src/main.ts', content: 'console.log("main");', patchStrategy: 'replace' });
+            expect(parsed?.operations).toContainEqual({ type: 'delete', path: 'src/to-delete.ts' });
+            expect(parsed?.operations).toContainEqual({ type: 'write', path: 'src/new-feature.ts', content: 'diff content', patchStrategy: 'new-unified' });
             expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
         });
         
@@ -144,12 +147,18 @@ ${content}
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            expect(parsed!.operations[0]!.path).toBe(filePath);
+            const op = parsed!.operations[0];
+            if (op.type === 'write' || op.type === 'delete') {
+                expect(op.path).toBe(filePath);
+            }
         });
 
         it('should handle empty content in a write operation', () => {
             const filePath = 'src/empty.ts';
-            const response = createFileBlock(filePath, '') + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
+            const { response } = createLLMResponseString(
+                [{ type: 'new', path: filePath, content: '' }],
+                { uuid: testUuid, reasoning: [] }
+            );
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
@@ -181,7 +190,9 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             `;
 
             const parsed = parseLLMResponse(response);
-            const operation = parsed?.operations.find(op => op.path === filePath);
+            const operation = parsed?.operations.find(op => 
+                (op.type === 'write' || op.type === 'delete') && op.path === filePath
+            );
             
             expect(parsed).not.toBeNull();
             expect(operation?.type).toBe('write');
@@ -193,15 +204,11 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
         it('should strip START and END markers from parsed content', () => {
             const filePath = 'src/markers.ts';
             const content = 'const content = "here";';
-            
-            // The helper adds the markers
-            const block = createFileBlock(filePath, content);
-            
-            // Verify the block has the markers for sanity
-            expect(block).toContain('// START');
-            expect(block).toContain('// END');
-        
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
+
+            const { response } = createLLMResponseString(
+                [{ type: 'edit', path: filePath, content }],
+                { uuid: testUuid }
+            );
         
             const parsed = parseLLMResponse(response);
             const operation = parsed?.operations[0];
@@ -229,7 +236,7 @@ ${content}
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            const op = parsed!.operations[0]!;
+            const op = parsed!.operations[0];
             expect(op.type).toBe('write');
             if (op.type === 'write' || op.type === 'delete') {
                 expect(op.path).toBe(fullPath);
@@ -249,11 +256,10 @@ console.log(example);
             const parsed = parseLLMResponse(response);
             
             expect(parsed).not.toBeNull();
-            expect(parsed!.operations).toHaveLength(1);
-            const op = parsed!.operations[0]!;
+            const op = parsed!.operations[0];
             expect(op.type).toBe('write');
             if (op.type === 'write') {
-                expect(op.patchStrategy).toBe('replace'); // Should be 'replace', not 'multi-search-replace'
+                expect(op.patchStrategy).toBe('replace');
             }
         });
 

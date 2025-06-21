@@ -1,3 +1,13 @@
+#### ✅ DONE: add version to relay
+#### VERIFY: Transaction rolleed back still not really making all affected files to original state especially the failed file.
+#### VERIFY: shorhands commands not working, also commands without -- not working.
+#### VERIFY: ms took should be shown before asking approval
+#### VERIFY: system notification should fired on matched project id, not on valid patch format
+#### VERIFY: it still asking for approval on approval off in config setup
+#### words level chalk
+#### ✅ DONE uuid that has already in undone should not be reprocess
+
+
 #### ✅ DONE : Undo Last Transaction (`relay undo`)
 -   **What:** A new CLI command, `relay undo`, that reverts the last successfully committed transaction.
 -   **Why:** Provides a critical safety net. If a developer accepts a change and only later realizes it was a mistake, this offers a one-command escape hatch without needing to manually revert files or rely on Git.
@@ -86,13 +96,3 @@
       ]
     }
     ```
-
-
-#### ✅ DONE: add version to relay
-#### VERIFY: Transaction rolleed back still not really making all affected files to original state especially the failed file.
-#### VERIFY: shorhands commands not working, also commands without -- not working.
-#### VERIFY: ms took should be shown before asking approval
-#### VERIFY: system notification should fired on matched project id, not on valid patch format
-#### VERIFY: it still asking for approval on approval off in config setup
-#### words level chalk
-#### uuid that has already in undone should not be reprocess
