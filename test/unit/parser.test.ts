@@ -256,6 +256,27 @@ console.log(example);
                 expect(op.patchStrategy).toBe('replace'); // Should be 'replace', not 'multi-search-replace'
             }
         });
+
+        it('should not detect multi-search-replace when only start marker is present without end marker', () => {
+            const filePath = 'src/partial-marker.ts';
+            // Content has the start marker at the beginning of a line but no end marker
+            const content = `
+<<<<<<< SEARCH
+This content has the start marker but not the end marker
+So it should be treated as regular content, not multi-search-replace
+            `;
+            const block = createFileBlock(filePath, content);
+            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
+            const parsed = parseLLMResponse(response);
+            
+            expect(parsed).not.toBeNull();
+            expect(parsed!.operations).toHaveLength(1);
+            const op = parsed!.operations[0]!;
+            expect(op.type).toBe('write');
+            if (op.type === 'write') {
+                expect(op.patchStrategy).toBe('replace'); // Should be 'replace', not 'multi-search-replace'
+            }
+        });
     });
 
     describe('from fixtures', () => {

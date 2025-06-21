@@ -138,8 +138,8 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
 
             if (!strategyProvided) {
                 // Check for multi-search-replace format with a more precise pattern
-                // Looking for the exact pattern at the start of a line
-                if (/^<<<<<<< SEARCH\s*$/m.test(content)) {
+                // Looking for the exact pattern at the start of a line AND the ending marker
+                if (/^<<<<<<< SEARCH\s*$/m.test(content) && content.includes('>>>>>>> REPLACE')) {
                     patchStrategy = 'multi-search-replace';
                     logger.debug('Inferred patch strategy: multi-search-replace');
                 } 
