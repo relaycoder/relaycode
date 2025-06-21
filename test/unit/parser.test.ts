@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { parseLLMResponse } from '../../src/core/parser';
 import { v4 as uuidv4 } from 'uuid';
-import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock, createLLMResponseString } from '../test.util';
+import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createLLMResponseString } from '../test.util';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -147,7 +147,7 @@ ${content}
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
+            const op = parsed!.operations[0]!;
             if (op.type === 'write' || op.type === 'delete') {
                 expect(op.path).toBe(filePath);
             }
@@ -190,13 +190,12 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             `;
 
             const parsed = parseLLMResponse(response);
-            const operation = parsed?.operations.find(op => 
-                (op.type === 'write' || op.type === 'delete') && op.path === filePath
-            );
+            const operation = parsed?.operations.find(op => 'path' in op && op.path === filePath);
             
             expect(parsed).not.toBeNull();
-            expect(operation?.type).toBe('write');
-            if(operation?.type === 'write') {
+            expect(operation).toBeDefined();
+            expect(operation!.type).toBe('write');
+            if(operation && operation.type === 'write') {
                 expect(operation.content).toBe(content);
             }
         });
@@ -215,8 +214,8 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
         
             expect(parsed).not.toBeNull();
             expect(operation).not.toBeUndefined();
-            expect(operation?.type).toBe('write');
-            if (operation?.type === 'write') {
+            expect(operation!.type).toBe('write');
+            if (operation && operation.type === 'write') {
                 expect(operation.content).toBe(content);
                 expect(operation.content).not.toContain('// START');
                 expect(operation.content).not.toContain('// END');
@@ -236,7 +235,7 @@ ${content}
             const parsed = parseLLMResponse(response);
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
+            const op = parsed!.operations[0]!;
             expect(op.type).toBe('write');
             if (op.type === 'write' || op.type === 'delete') {
                 expect(op.path).toBe(fullPath);
@@ -256,8 +255,9 @@ console.log(example);
             const parsed = parseLLMResponse(response);
             
             expect(parsed).not.toBeNull();
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.patchStrategy).toBe('replace');
             }
@@ -278,7 +278,8 @@ So it should be treated as regular content, not multi-search-replace
             expect(parsed).not.toBeNull();
             expect(parsed!.operations).toHaveLength(1);
             const op = parsed!.operations[0]!;
-            expect(op.type).toBe('write');
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.patchStrategy).toBe('replace'); // Should be 'replace', not 'multi-search-replace'
             }
@@ -299,8 +300,9 @@ So it should be treated as regular content, not multi-search-replace
             expect(parsed?.control.uuid).toBe('486a43f8-874e-4f16-832f-b2fd3769c36c');
             expect(parsed?.operations).toHaveLength(1);
 
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.path).toBe('package.json');
                 expect(op.patchStrategy).toBe('multi-search-replace');
@@ -320,8 +322,9 @@ So it should be treated as regular content, not multi-search-replace
             expect(parsed?.control.uuid).toBe('1c8a41a8-20d7-4663-856e-9ebd03f7a1e1');
             expect(parsed?.operations).toHaveLength(1);
 
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.path).toBe('src/new.ts');
                 expect(op.patchStrategy).toBe('replace');
@@ -338,8 +341,9 @@ So it should be treated as regular content, not multi-search-replace
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.path).toBe('src/new.ts');
                 expect(op.patchStrategy).toBe('replace');
@@ -354,12 +358,13 @@ So it should be treated as regular content, not multi-search-replace
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.path).toBe('src/utils.ts');
                 expect(op.patchStrategy).toBe('new-unified');
-                expect(op.content.trim()).toBe(expectedContent.trim());
+                expect(op!.content.trim()).toBe(expectedContent.trim());
             }
         });
 
@@ -369,8 +374,9 @@ So it should be treated as regular content, not multi-search-replace
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('delete');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('delete');
             if (op.type === 'delete') {
                 expect(op.path).toBe('src/old-helper.ts');
             }
@@ -383,8 +389,9 @@ So it should be treated as regular content, not multi-search-replace
 
             expect(parsed).not.toBeNull();
             expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
+            const op = parsed!.operations[0]!;
+            expect(op).toBeDefined();
+            expect(op!.type).toBe('write');
             if (op.type === 'write') {
                 expect(op.path).toBe('src/components/My Component.tsx');
             }
@@ -410,10 +417,10 @@ So it should be treated as regular content, not multi-search-replace
                 path: 'src/utils.ts',
             });
             
-            const newOp = parsed?.operations.find(op => op.path.includes('New Component'));
+            const newOp = parsed?.operations.find(op => 'path' in op && op.path.includes('New Component'));
             expect(newOp).toBeDefined();
-            expect(newOp?.type).toBe('write');
-            if (newOp?.type === 'write') {
+            expect(newOp!.type).toBe('write');
+            if (newOp && newOp.type === 'write') {
                 expect(newOp.patchStrategy).toBe('new-unified');
                 expect(newOp.path).toBe('src/components/New Component.tsx');
             }

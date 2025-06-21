@@ -288,13 +288,12 @@ describe('e2e/transaction', () => {
         const orphanedState = { uuid, message: 'this is from a crashed run' };
         await fs.writeFile(orphanedPendingFile, yaml.dump(orphanedState));
 
-        const { config } = await runProcessPatch(
+        await runProcessPatch(
             context,
             {},
             [{ type: 'edit', path: testFile, content: newContent }],
             { responseOverrides: { uuid } }
         );
-        
         const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(finalContent).toBe(newContent);
 
