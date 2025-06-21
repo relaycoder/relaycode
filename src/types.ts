@@ -1,8 +1,12 @@
 import { z } from 'zod';
 
+export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'debug']).default('info');
+export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
+
 // Schema for relaycode.config.json
 export const ConfigSchema = z.object({
   projectId: z.string().min(1),
+  logLevel: LogLevelNameSchema,
   clipboardPollInterval: z.number().int().positive().default(2000),
   approval: z.enum(['yes', 'no']).default('yes'),
   approvalOnErrorCount: z.number().int().min(0).default(0),

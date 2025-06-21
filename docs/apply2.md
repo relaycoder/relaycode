@@ -1,549 +1,480 @@
-Of course! I can help with that. Testing the parser with realistic, fixture-based inputs is a great way to improve its robustness. I'll create the fixture files you requested and update the parser test suite to use them.
-
-Here are the new and modified files:
-
-```typescript // test/fixtures/delete-file.md
-I'm removing the old helper file. It is no longer needed.
-
-```typescript // src/old-helper.ts
-//TODO: delete this file
-```
-
-```yaml
-projectId: my-project
-uuid: 3c9a41b8-42e7-4663-a56e-1ebd03f7a1f3
-changeSummary:
-  - delete: src/old-helper.ts
-```
-```
-
-```typescript // test/fixtures/multi-search-replace.md
-I will update the `package.json` file to change the project name from `diff-apply` to `diff-patcher`. I'll update the `name`, the `keywords`, and the repository `url`.
-
-```json // package.json multi-search-replace
-<<<<<<< SEARCH
--------
-  "name": "diff-apply",
-  "version": "1.0.6",
-  "description": "A utility for applying file diffs programmatically",
-=======
-  "name": "diff-patcher",
-  "version": "1.0.6",
-  "description": "A utility for applying file diffs programmatically",
->>>>>>> REPLACE
-<<<<<<< SEARCH
--------
-  "keywords": [
-    "diff",
-    "patch",
-    "file",
-    "text",
-    "diff-apply"
-  ],
-=======
-  "keywords": [
-    "diff",
-    "patch",
-    "file",
-    "text",
-    "diff-patcher"
-  ],
->>>>>>> REPLACE
-<<<<<<< SEARCH
--------
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pylarco/diff-apply.git"
-  },
-=======
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pylarco/diff-patcher.git"
-  },
->>>>>>> REPLACE
-```
-
-```yaml
-projectId: diff-apply
-uuid: 486a43f8-874e-4f16-832f-b2fd3769c36c
-changeSummary:
-  - edit: package.json
-```
-```
-
-```typescript // test/fixtures/multiple-ops.md
-I'm performing a few operations.
-
-First, editing `main.ts`.
-```typescript // src/main.ts
-// START
-console.log("Updated main");
-// END
-```
-
-Second, deleting `utils.ts`.
-```typescript // src/utils.ts
-//TODO: delete this file
-```
-
-Finally, adding a new component.
-```typescript // "src/components/New Component.tsx" new-unified
---- a/src/components/New Component.tsx
-+++ b/src/components/New Component.tsx
-@@ -0,0 +1,3 @@
-+export const NewComponent = () => {
-+  return <div>New!</div>;
-+};
-```
-
-```yaml
-projectId: my-project
-uuid: 5e1a41d8-64a7-4663-c56e-3ebd03f7a1f5
-changeSummary:
-  - edit: src/main.ts
-  - delete: src/utils.ts
-  - new: src/components/New Component.tsx
-```
-```
-
-```typescript // test/fixtures/new-unified.md
-I will update `src/utils.ts` to add a new parameter.
-
-```diff // src/utils.ts new-unified
---- a/src/utils.ts
-+++ b/src/utils.ts
-@@ -1,3 +1,3 @@
--export function greet(name: string) {
--  return `Hello, ${name}!`;
-+export function greet(name: string, enthusiasm: number) {
-+  return `Hello, ${name}` + '!'.repeat(enthusiasm);
- }
-```
-
-```yaml
-projectId: my-project
-uuid: 2b8f41e8-31d7-4663-956e-0ebd03f7a1f2
-changeSummary:
-  - edit: src/utils.ts
-```
-```
-
-```typescript // test/fixtures/path-with-spaces.md
-Creating a new component with a space in its name.
-
-```typescript // "src/components/My Component.tsx"
-export const MyComponent = () => <div>Hello</div>;
-```
-
-```yaml
-projectId: my-project
-uuid: 4d0a41c8-53f7-4663-b56e-2ebd03f7a1f4
-changeSummary:
-  - new: src/components/My Component.tsx
-```
-```
-
-```typescript // test/fixtures/replace-no-markers.md
-Here are the changes to create a new file `src/new.ts`.
-
-```typescript // src/new.ts
-export const newFunction = () => {
-    console.log("new file");
-};
-```
-
-```yaml
-projectId: my-project
-uuid: 1c8a41a8-20d7-4663-856e-9ebd03f7a1e1
-changeSummary:
-  - new: src/new.ts
-```
-```
-
-```typescript // test/fixtures/replace-with-markers.md
-Here are the changes to create a new file `src/new.ts`.
-
-```typescript // src/new.ts
-// START
-export const newFunction = () => {
-    console.log("new file");
-};
-// END
-```
-
-```yaml
-projectId: my-project
-uuid: 1c8a41a8-20d7-4663-856e-9ebd03f7a1e1
-changeSummary:
-  - new: src/new.ts
-```
-```
-
-```typescript // test/unit/parser.test.ts
-import { describe, it, expect } from 'bun:test';
-import { parseLLMResponse } from '../../src/core/parser';
-import { v4 as uuidv4 } from 'uuid';
-import { LLM_RESPONSE_START, LLM_RESPONSE_END, createFileBlock, createDeleteFileBlock } from '../test.util';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-describe('core/parser', () => {
-
-    describe('legacy tests', () => {
-        const testUuid = uuidv4();
-
-        it('should return null if YAML block is missing', () => {
-            const response = `
-\`\`\`typescript // src/index.ts
-console.log("hello");
-\`\`\`
-            `;
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-
-        it('should return null if YAML is malformed', () => {
-            const response = `
-\`\`\`typescript // src/index.ts
-console.log("hello");
-\`\`\`
-\`\`\`yaml
-projectId: test-project
-uuid: ${testUuid}
-  malformed: - yaml
-\`\`\`
-            `;
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-
-        it('should return null if YAML is missing required fields', () => {
-            const response = `
-\`\`\`typescript // src/index.ts
-console.log("hello");
-\`\`\`
-\`\`\`yaml
-projectId: test-project
-\`\`\`
-            `;
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-
-        it('should return null if no code blocks are found', () => {
-            const response = LLM_RESPONSE_START + LLM_RESPONSE_END(testUuid, []);
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-
-        it('should correctly parse a single file write operation with default "replace" strategy', () => {
-            const content = 'const a = 1;';
-            const filePath = 'src/utils.ts';
-            const block = createFileBlock(filePath, content); // No strategy provided
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
-            
-            const parsed = parseLLMResponse(response);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.control.uuid).toBe(testUuid);
-            expect(parsed?.control.projectId).toBe('test-project');
-            expect(parsed?.reasoning.join(' ')).toContain('I have analyzed your request and here are the changes.');
-            expect(parsed?.operations).toHaveLength(1);
-            expect(parsed?.operations[0]).toEqual({
-                type: 'write',
-                path: filePath,
-                content: content,
-                patchStrategy: 'replace',
-            });
-        });
-        
-        it('should correctly parse a write operation with an explicit patch strategy', () => {
-            const content = 'diff content';
-            const filePath = 'src/utils.ts';
-            const block = createFileBlock(filePath, content, 'new-unified');
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
-
-            const parsed = parseLLMResponse(response);
-            expect(parsed).not.toBeNull();
-            const writeOp = parsed?.operations[0];
-            expect(writeOp?.type).toBe('write');
-            if (writeOp?.type === 'write') {
-                expect(writeOp.patchStrategy).toBe('new-unified');
-                expect(writeOp.content).toBe(content);
-            }
-        });
-
-        it('should correctly parse a single file delete operation', () => {
-            const filePath = 'src/old-file.ts';
-            const block = createDeleteFileBlock(filePath);
-            const response = "I'm deleting this old file." + block + LLM_RESPONSE_END(testUuid, [{ delete: filePath }]);
-
-            const parsed = parseLLMResponse(response);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(1);
-            expect(parsed?.operations[0]).toEqual({
-                type: 'delete',
-                path: filePath,
-            });
-        });
-
-        it('should correctly parse multiple mixed operations', () => {
-            const filePath1 = 'src/main.ts';
-            const content1 = 'console.log("main");';
-            const filePath2 = 'src/to-delete.ts';
-            const filePath3 = 'src/new-feature.ts';
-
-            const response = [
-                "I'll make three changes.",
-                createFileBlock(filePath1, content1, 'replace'),
-                "Then delete a file.",
-                createDeleteFileBlock(filePath2),
-                "And finally add a new one with a diff.",
-                createFileBlock(filePath3, 'diff content', 'new-unified'),
-                LLM_RESPONSE_END(testUuid, [{edit: filePath1}, {delete: filePath2}, {new: filePath3}])
-            ].join('\n');
-
-            const parsed = parseLLMResponse(response);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(3);
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath1, content: content1, patchStrategy: 'replace' });
-            expect(parsed?.operations).toContainEqual({ type: 'delete', path: filePath2 });
-            expect(parsed?.operations).toContainEqual({ type: 'write', path: filePath3, content: 'diff content', patchStrategy: 'new-unified' });
-            expect(parsed?.reasoning.join(' ')).toContain("I'll make three changes.");
-        });
-        
-        it('should handle file paths with spaces when quoted', () => {
-            const filePath = 'src/components/a file with spaces.tsx';
-            const content = '<button>Click Me</button>';
-            const block = `
-\`\`\`typescript // "${filePath}"
-// START
-
-${content}
-
-// END
-\`\`\`
-`;
-            const response = block + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
-            const parsed = parseLLMResponse(response);
-            expect(parsed).not.toBeNull();
-            expect(parsed!.operations).toHaveLength(1);
-            expect(parsed!.operations[0]!.path).toBe(filePath);
-        });
-
-        it('should handle empty content in a write operation', () => {
-            const filePath = 'src/empty.ts';
-            const response = createFileBlock(filePath, '') + LLM_RESPONSE_END(testUuid, [{ new: filePath }]);
-            const parsed = parseLLMResponse(response);
-            expect(parsed).not.toBeNull();
-            expect(parsed!.operations).toHaveLength(1);
-            const operation = parsed!.operations[0]!;
-            expect(operation.type).toBe('write');
-            if (operation.type === 'write') {
-                expect(operation.content).toBe('');
-            }
-        });
-
-        it('should ignore malformed code blocks', () => {
-            const response = `
-\`\`\`typescript //
-const a = 1;
-\`\`\`
-${LLM_RESPONSE_END(testUuid, [])}
-            `;
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-
-        it('should correctly extract content even if START/END markers are missing', () => {
-            const filePath = 'src/simple.ts';
-            const content = 'const simple = true;';
-            const response = `
-\`\`\`typescript // ${filePath}
-${content}
-\`\`\`
-${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
-            `;
-
-            const parsed = parseLLMResponse(response);
-            const operation = parsed?.operations.find(op => op.path === filePath);
-            
-            expect(parsed).not.toBeNull();
-            expect(operation?.type).toBe('write');
-            if(operation?.type === 'write') {
-                expect(operation.content).toBe(content);
-            }
-        });
-
-        it('should strip START and END markers from parsed content', () => {
-            const filePath = 'src/markers.ts';
-            const content = 'const content = "here";';
-            
-            // The helper adds the markers
-            const block = createFileBlock(filePath, content);
-            
-            // Verify the block has the markers for sanity
-            expect(block).toContain('// START');
-            expect(block).toContain('// END');
-        
-            const response = LLM_RESPONSE_START + block + LLM_RESPONSE_END(testUuid, [{ edit: filePath }]);
-        
-            const parsed = parseLLMResponse(response);
-            const operation = parsed?.operations[0];
-        
-            expect(parsed).not.toBeNull();
-            expect(operation).not.toBeUndefined();
-            expect(operation?.type).toBe('write');
-            if (operation?.type === 'write') {
-                expect(operation.content).toBe(content);
-                expect(operation.content).not.toContain('// START');
-                expect(operation.content).not.toContain('// END');
-            }
-        });
-
-        it('should return null for an unknown patch strategy', () => {
-            const filePath = 'src/index.ts';
-            const content = 'console.log("hello");';
-            const block = `
-\`\`\`typescript // ${filePath} unknown-strategy
-${content}
-\`\`\`
-            `;
-            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
-            expect(parseLLMResponse(response)).toBeNull();
-        });
-    });
-
-    describe('from fixtures', () => {
-        const fixturesDir = path.resolve(__dirname, '../fixtures');
-
-        const readFixture = (name: string) => fs.readFile(path.join(fixturesDir, name), 'utf-8');
-
-        it('should correctly parse multi-search-replace.md', async () => {
-            const content = await readFixture('multi-search-replace.md');
-            const parsed = parseLLMResponse(content);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.control.projectId).toBe('diff-apply');
-            expect(parsed?.control.uuid).toBe('486a43f8-874e-4f16-832f-b2fd3769c36c');
-            expect(parsed?.operations).toHaveLength(1);
-
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
-            if (op.type === 'write') {
-                expect(op.path).toBe('package.json');
-                expect(op.patchStrategy).toBe('multi-search-replace');
-                expect(op.content).toContain('<<<<<<< SEARCH');
-                expect(op.content).toContain('>>>>>>> REPLACE');
-                expect(op.content).toContain('"name": "diff-patcher"');
-            }
-            expect(parsed?.reasoning.join(' ')).toContain("I will update the `package.json` file");
-        });
-
-        it('should correctly parse replace-with-markers.md', async () => {
-            const content = await readFixture('replace-with-markers.md');
-            const parsed = parseLLMResponse(content);
-            const expectedContent = `export const newFunction = () => {\n    console.log("new file");\n};`;
-            
-            expect(parsed).not.toBeNull();
-            expect(parsed?.control.uuid).toBe('1c8a41a8-20d7-4663-856e-9ebd03f7a1e1');
-            expect(parsed?.operations).toHaveLength(1);
-
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
-            if (op.type === 'write') {
-                expect(op.path).toBe('src/new.ts');
-                expect(op.patchStrategy).toBe('replace');
-                expect(op.content).toBe(expectedContent);
-                expect(op.content).not.toContain('// START');
-                expect(op.content).not.toContain('// END');
-            }
-        });
-
-        it('should correctly parse replace-no-markers.md', async () => {
-            const content = await readFixture('replace-no-markers.md');
-            const parsed = parseLLMResponse(content);
-            const expectedContent = `export const newFunction = () => {\n    console.log("new file");\n};`;
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
-            if (op.type === 'write') {
-                expect(op.path).toBe('src/new.ts');
-                expect(op.patchStrategy).toBe('replace');
-                expect(op.content).toBe(expectedContent);
-            }
-        });
-
-        it('should correctly parse new-unified.md', async () => {
-            const content = await readFixture('new-unified.md');
-            const parsed = parseLLMResponse(content);
-            const expectedContent = `--- a/src/utils.ts\n+++ b/src/utils.ts\n@@ -1,3 +1,3 @@\n-export function greet(name: string) {\n-  return \`Hello, \${name}!\`;\n+export function greet(name: string, enthusiasm: number) {\n+  return \`Hello, \${name}\` + '!'.repeat(enthusiasm);\n }`;
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
-            if (op.type === 'write') {
-                expect(op.path).toBe('src/utils.ts');
-                expect(op.patchStrategy).toBe('new-unified');
-                expect(op.content.trim()).toBe(expectedContent.trim());
-            }
-        });
-
-        it('should correctly parse delete-file.md', async () => {
-            const content = await readFixture('delete-file.md');
-            const parsed = parseLLMResponse(content);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('delete');
-            if (op.type === 'delete') {
-                expect(op.path).toBe('src/old-helper.ts');
-            }
-            expect(parsed?.reasoning.join(' ')).toContain("I'm removing the old helper file.");
-        });
-
-        it('should correctly parse path-with-spaces.md', async () => {
-            const content = await readFixture('path-with-spaces.md');
-            const parsed = parseLLMResponse(content);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.operations).toHaveLength(1);
-            const op = parsed!.operations[0];
-            expect(op.type).toBe('write');
-            if (op.type === 'write') {
-                expect(op.path).toBe('src/components/My Component.tsx');
-            }
-        });
-        
-        it('should correctly parse multiple-ops.md', async () => {
-            const content = await readFixture('multiple-ops.md');
-            const parsed = parseLLMResponse(content);
-
-            expect(parsed).not.toBeNull();
-            expect(parsed?.control.uuid).toBe('5e1a41d8-64a7-4663-c56e-3ebd03f7a1f5');
-            expect(parsed?.operations).toHaveLength(3);
-
-            expect(parsed?.operations).toContainEqual({
-                type: 'write',
-                path: 'src/main.ts',
-                content: 'console.log("Updated main");',
-                patchStrategy: 'replace'
-            });
-
-            expect(parsed?.operations).toContainEqual({
-                type: 'delete',
-                path: 'src/utils.ts',
-            });
-            
-            const newOp = parsed?.operations.find(op => op.path.includes('New Component'));
-            expect(newOp).toBeDefined();
-            expect(newOp?.type).toBe('write');
-            if (newOp?.type === 'write') {
-                expect(newOp.patchStrategy).toBe('new-unified');
-                expect(newOp.path).toBe('src/components/New Component.tsx');
-            }
-        });
-    });
+I've implemented the logging levels as requested. Here are the code changes:
+
+I've introduced a `logLevel` setting in your `relaycode.config.json` which can be set to `'silent'`, `'error'`, `'warn'`, `'info'`, or `'debug'`. The default is `'info'`. I've updated the logger to respect this setting and converted verbose logs (like those in the parser) to the `'debug'` level.
+
+Here are the affected files:
+
+```typescript // src/types.ts
+import { z } from 'zod';
+
+export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'debug']).default('info');
+export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
+
+// Schema for relaycode.config.json
+export const ConfigSchema = z.object({
+  projectId: z.string().min(1),
+  logLevel: LogLevelNameSchema,
+  clipboardPollInterval: z.number().int().positive().default(2000),
+  approval: z.enum(['yes', 'no']).default('yes'),
+  approvalOnErrorCount: z.number().int().min(0).default(0),
+  linter: z.string().default('bun tsc --noEmit'),
+  preCommand: z.string().default(''),
+  postCommand: z.string().default(''),
 });
+export type Config = z.infer<typeof ConfigSchema>;
+
+export const PatchStrategySchema = z.enum([
+  'replace',
+  'new-unified',
+  'multi-search-replace',
+  'unified',
+]).default('replace');
+export type PatchStrategy = z.infer<typeof PatchStrategySchema>;
+
+// Schema for operations parsed from code blocks
+export const FileOperationSchema = z.union([
+  z.object({
+    type: z.literal('write'),
+    path: z.string(),
+    content: z.string(),
+    patchStrategy: PatchStrategySchema,
+  }),
+  z.object({
+    type: z.literal('delete'),
+    path: z.string(),
+  }),
+]);
+export type FileOperation = z.infer<typeof FileOperationSchema>;
+
+// Schema for the control YAML block at the end of the LLM response
+export const ControlYamlSchema = z.object({
+  projectId: z.string(),
+  uuid: z.string().uuid(),
+  changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
+});
+export type ControlYaml = z.infer<typeof ControlYamlSchema>;
+
+// The fully parsed response from the clipboard
+export const ParsedLLMResponseSchema = z.object({
+  control: ControlYamlSchema,
+  operations: z.array(FileOperationSchema),
+  reasoning: z.array(z.string()),
+});
+export type ParsedLLMResponse = z.infer<typeof ParsedLLMResponseSchema>;
+
+// Schema for the snapshot of original files
+export const FileSnapshotSchema = z.record(z.string(), z.string().nullable()); // path -> content | null (if file didn't exist)
+export type FileSnapshot = z.infer<typeof FileSnapshotSchema>;
+
+// Schema for the state file (.relaycode/{uuid}.yml or .pending.yml)
+export const StateFileSchema = z.object({
+  uuid: z.string().uuid(),
+  projectId: z.string(),
+  createdAt: z.string().datetime(),
+  reasoning: z.array(z.string()),
+  operations: z.array(FileOperationSchema),
+  snapshot: FileSnapshotSchema,
+  approved: z.boolean(),
+});
+export type StateFile = z.infer<typeof StateFileSchema>;
+
+// Shell command execution result
+export const ShellCommandResultSchema = z.object({
+    stdout: z.string(),
+    stderr: z.string(),
+    exitCode: z.number().nullable(),
+});
+export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
+```
+```typescript // src/utils/logger.ts
+import chalk from 'chalk';
+import { LogLevelName } from '../types';
+
+const LogLevels = {
+  silent: 0,
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+} as const;
+
+let currentLogLevel: LogLevelName = 'info'; // Default level
+
+export const logger = {
+  setLevel: (level: LogLevelName) => {
+    if (level in LogLevels) {
+      currentLogLevel = level;
+    }
+  },
+  info: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.blue(message));
+    }
+  },
+  success: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.green(message));
+    }
+  },
+  warn: (message: string) => {
+    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
+      console.log(chalk.yellow(message));
+    }
+  },
+  error: (message: string) => {
+    if (LogLevels.error <= LogLevels[currentLogLevel]) {
+      console.log(chalk.red(message));
+    }
+  },
+  debug: (message: string) => {
+    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
+      console.log(chalk.gray(message));
+    }
+  },
+  log: (message: string) => {
+    // General log, treat as info
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(message);
+    }
+  },
+  prompt: (message: string) => {
+    // Prompts are special and should be shown unless silent
+    if (currentLogLevel !== 'silent') {
+      console.log(chalk.cyan(message));
+    }
+  },
+};
+```
+```typescript // src/core/config.ts
+import { z } from 'zod';
+import path from 'path';
+import { promises as fs } from 'fs';
+import { Config, ConfigSchema } from '../types';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
+
+export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
+  const configPath = path.join(cwd, CONFIG_FILE_NAME);
+  try {
+    const fileContent = await fs.readFile(configPath, 'utf-8');
+    const configJson = JSON.parse(fileContent);
+    return ConfigSchema.parse(configJson);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return null;
+    }
+    if (error instanceof z.ZodError) {
+      throw new Error(`Invalid configuration in ${CONFIG_FILE_NAME}: ${error.message}`);
+    }
+    throw error;
+  }
+};
+
+export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
+    const config = {
+        projectId,
+        clipboardPollInterval: 2000,
+        approval: 'yes' as const,
+        approvalOnErrorCount: 0,
+        linter: 'bun tsc --noEmit',
+        preCommand: '',
+        postCommand: '',
+    };
+    
+    // Ensure the schema defaults are applied, including for logLevel
+    const validatedConfig = ConfigSchema.parse(config);
+
+    const configPath = path.join(cwd, CONFIG_FILE_NAME);
+    await fs.writeFile(configPath, JSON.stringify(validatedConfig, null, 2));
+
+    return validatedConfig;
+};
+
+export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
+    const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
+    await fs.mkdir(stateDirPath, { recursive: true });
+};
+
+export const getProjectId = async (cwd: string = process.cwd()): Promise<string> => {
+    try {
+        const pkgJsonPath = path.join(cwd, 'package.json');
+        const fileContent = await fs.readFile(pkgJsonPath, 'utf-8');
+        const pkgJson = JSON.parse(fileContent);
+        if (pkgJson.name && typeof pkgJson.name === 'string') {
+            return pkgJson.name;
+        }
+    } catch (e) {
+        // Ignore if package.json doesn't exist or is invalid
+    }
+    return path.basename(cwd);
+};
+```
+```typescript // src/commands/watch.ts
+import { findConfig } from '../core/config';
+import { createClipboardWatcher } from '../core/clipboard';
+import { parseLLMResponse } from '../core/parser';
+import { processPatch } from '../core/transaction';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME } from '../utils/constants';
+import { notifyPatchDetected } from '../utils/notifier';
+
+export const watchCommand = async (): Promise<void> => {
+  const config = await findConfig();
+
+  if (!config) {
+    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+    logger.info("Please run 'relay init' to create one.");
+    process.exit(1);
+  }
+  
+  logger.setLevel(config.logLevel);
+  logger.success('Configuration loaded. Starting relaycode watch...');
+  logger.debug(`Log level set to: ${config.logLevel}`);
+
+  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    logger.info('New clipboard content detected. Attempting to parse...');
+    const parsedResponse = parseLLMResponse(content);
+
+    if (!parsedResponse) {
+      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
+      return;
+    }
+    
+    notifyPatchDetected(config.projectId);
+    logger.success('Valid patch format detected. Processing...');
+    await processPatch(config, parsedResponse);
+    logger.info('--------------------------------------------------');
+    logger.info('Watching for next patch...');
+  });
+};
+```
+```typescript // src/utils/shell.ts
+import { exec } from 'child_process';
+import path from 'path';
+import { logger } from './logger';
+
+type ExecutionResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
+export const executeShellCommand = (command: string, cwd = process.cwd()): Promise<ExecutionResult> => {
+  if (!command || command.trim() === '') {
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+  }
+
+  // Normalize path for Windows environments
+  const normalizedCwd = path.resolve(cwd);
+
+  return new Promise((resolve) => {
+    // On Windows, make sure to use cmd.exe or PowerShell to execute command
+    const isWindows = process.platform === 'win32';
+    const finalCommand = isWindows 
+      ? `powershell -Command "${command.replace(/"/g, '\\"')}"`
+      : command;
+      
+    logger.debug(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
+    
+    exec(finalCommand, { cwd: normalizedCwd }, (error, stdout, stderr) => {
+      const exitCode = error ? error.code || 1 : 0;
+      
+      resolve({
+        exitCode,
+        stdout: stdout.toString().trim(),
+        stderr: stderr.toString().trim(),
+      });
+    });
+  });
+};
+
+export const getErrorCount = async (linterCommand: string, cwd = process.cwd()): Promise<number> => {
+  if (!linterCommand || linterCommand.trim() === '') {
+    return 0;
+  }
+  
+  const { exitCode, stderr } = await executeShellCommand(linterCommand, cwd);
+  if (exitCode === 0) return 0;
+
+  // Try to extract a number of errors from stderr or assume 1 if non-zero exit code
+  const errorMatches = stderr.match(/(\d+) error/i);
+  if (errorMatches && errorMatches[1]) {
+    return parseInt(errorMatches[1], 10);
+  }
+  return exitCode === 0 ? 0 : 1;
+};
+```
+```typescript // src/core/parser.ts
+import yaml from 'js-yaml';
+import { z } from 'zod';
+import {
+    ControlYamlSchema,
+    FileOperation,
+    ParsedLLMResponse,
+    ParsedLLMResponseSchema,
+    PatchStrategy,
+    PatchStrategySchema,
+} from '../types';
+import {
+    CODE_BLOCK_START_MARKER,
+    CODE_BLOCK_END_MARKER,
+    DELETE_FILE_MARKER
+} from '../utils/constants';
+import { logger } from '../utils/logger';
+
+const CODE_BLOCK_REGEX = /```(?:\w+)?(?:\s*\/\/\s*(.*?)|\s+(.*?))?[\r\n]([\s\S]*?)[\r\n]```/g;
+const YAML_BLOCK_REGEX = /```yaml[\r\n]([\s\S]+?)```/;
+
+const extractCodeBetweenMarkers = (content: string): string => {
+    const startMarkerIndex = content.indexOf(CODE_BLOCK_START_MARKER);
+    const endMarkerIndex = content.lastIndexOf(CODE_BLOCK_END_MARKER);
+
+    if (startMarkerIndex === -1 || endMarkerIndex === -1 || endMarkerIndex <= startMarkerIndex) {
+        // Normalize line endings to Unix-style \n for consistency
+        return content.trim().replace(/\r\n/g, '\n');
+    }
+
+    const startIndex = startMarkerIndex + CODE_BLOCK_START_MARKER.length;
+    // Normalize line endings to Unix-style \n for consistency
+    return content.substring(startIndex, endMarkerIndex).trim().replace(/\r\n/g, '\n');
+};
+
+export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
+    try {
+        logger.debug('Parsing LLM response...');
+        const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
+        logger.debug(`YAML match: ${yamlMatch ? 'Found' : 'Not found'}`);
+        if (!yamlMatch || typeof yamlMatch[1] !== 'string') {
+            logger.debug('No YAML block found or match[1] is not a string');
+            return null;
+        }
+
+        let control;
+        try {
+            const yamlContent = yaml.load(yamlMatch[1]);
+            logger.debug(`YAML content parsed: ${JSON.stringify(yamlContent)}`);
+            control = ControlYamlSchema.parse(yamlContent);
+            logger.debug(`Control schema parsed: ${JSON.stringify(control)}`);
+        } catch (e) {
+            logger.debug(`Error parsing YAML or control schema: ${e}`);
+            return null;
+        }
+
+        const textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
+        
+        const operations: FileOperation[] = [];
+        const matchedBlocks: string[] = [];
+        
+        let match;
+        logger.debug('Looking for code blocks...');
+        let blockCount = 0;
+        while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
+            blockCount++;
+            logger.debug(`Found code block #${blockCount}`);
+            const [fullMatch, commentHeaderLine, spaceHeaderLine, rawContent] = match;
+
+            // Get the header line from either the comment style or space style
+            const headerLineUntrimmed = commentHeaderLine || spaceHeaderLine || '';
+            
+            if (typeof headerLineUntrimmed !== 'string' || typeof rawContent !== 'string') {
+                logger.debug('Header line or raw content is not a string, skipping');
+                continue;
+            }
+
+            const headerLine = headerLineUntrimmed.trim();
+            if (headerLine === '') {
+                logger.debug('Empty header line, skipping');
+                continue;
+            }
+
+            logger.debug(`Header line: ${headerLine}`);
+            matchedBlocks.push(fullMatch);
+            const content = rawContent.trim();
+            
+            let filePath = '';
+            let patchStrategy: PatchStrategy;
+            
+            const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
+            if (quotedMatch) {
+                filePath = quotedMatch[1]!;
+                const strategyStr = quotedMatch[2] || '';
+                const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
+                if (!parsedStrategy.success) {
+                    logger.debug('Invalid patch strategy for quoted path, skipping');
+                    continue;
+                }
+                patchStrategy = parsedStrategy.data;
+            } else {
+                const parts = headerLine.split(/\s+/);
+                if (parts.length > 1) {
+                    const strategyStr = parts.pop()!;
+                    const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
+                    if (!parsedStrategy.success) {
+                        logger.debug('Invalid patch strategy, skipping');
+                        continue;
+                    }
+                    patchStrategy = parsedStrategy.data;
+                    filePath = parts.join(' ');
+                } else {
+                    filePath = headerLine;
+                    patchStrategy = PatchStrategySchema.parse(undefined);
+                }
+            }
+
+            logger.debug(`File path: ${filePath}`);
+            logger.debug(`Patch strategy: ${patchStrategy}`);
+            
+            if (!filePath) {
+                logger.debug('Empty file path, skipping');
+                continue;
+            }
+
+            if (content === DELETE_FILE_MARKER) {
+                logger.debug(`Adding delete operation for: ${filePath}`);
+                operations.push({ type: 'delete', path: filePath });
+            } else {
+                const cleanContent = extractCodeBetweenMarkers(content);
+                logger.debug(`Adding write operation for: ${filePath}`);
+                operations.push({ 
+                    type: 'write', 
+                    path: filePath, 
+                    content: cleanContent, 
+                    patchStrategy 
+                });
+            }
+        }
+        
+        logger.debug(`Found ${blockCount} code blocks, ${operations.length} operations`);
+        
+        let reasoningText = textWithoutYaml;
+        for (const block of matchedBlocks) {
+            reasoningText = reasoningText.replace(block, '');
+        }
+        const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
+
+        if (operations.length === 0) {
+            logger.debug('No operations found, returning null');
+            return null;
+        }
+
+        try {
+            const parsedResponse = ParsedLLMResponseSchema.parse({
+                control,
+                operations,
+                reasoning,
+            });
+            logger.debug('Successfully parsed LLM response');
+            return parsedResponse;
+        } catch (e) {
+            logger.debug(`Error parsing final response schema: ${e}`);
+            return null;
+        }
+    } catch (e) {
+        if (e instanceof z.ZodError) {
+            logger.debug(`ZodError: ${JSON.stringify(e.errors)}`);
+        } else {
+            logger.debug(`Unexpected error: ${e}`);
+        }
+        return null;
+    }
+};
 ```

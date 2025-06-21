@@ -22,17 +22,17 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
 };
 
 export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
-    const config: Config = {
+    const config = {
         projectId,
         clipboardPollInterval: 2000,
-        approval: 'yes',
+        approval: 'yes' as const,
         approvalOnErrorCount: 0,
         linter: 'bun tsc --noEmit',
         preCommand: '',
         postCommand: '',
     };
     
-    // Ensure the schema defaults are applied
+    // Ensure the schema defaults are applied, including for logLevel
     const validatedConfig = ConfigSchema.parse(config);
 
     const configPath = path.join(cwd, CONFIG_FILE_NAME);

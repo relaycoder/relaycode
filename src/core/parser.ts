@@ -13,6 +13,7 @@ import {
     CODE_BLOCK_END_MARKER,
     DELETE_FILE_MARKER
 } from '../utils/constants';
+import { logger } from '../utils/logger';
 
 const CODE_BLOCK_REGEX = /```(?:\w+)?(?:\s*\/\/\s*(.*?)|\s+(.*?))?[\r\n]([\s\S]*?)[\r\n]```/g;
 const YAML_BLOCK_REGEX = /```yaml[\r\n]([\s\S]+?)```/;
@@ -33,22 +34,22 @@ const extractCodeBetweenMarkers = (content: string): string => {
 
 export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
     try {
-        console.log('Parsing LLM response...');
+        logger.debug('Parsing LLM response...');
         const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
-        console.log('YAML match:', yamlMatch ? 'Found' : 'Not found');
+        logger.debug(`YAML match: ${yamlMatch ? 'Found' : 'Not found'}`);
         if (!yamlMatch || typeof yamlMatch[1] !== 'string') {
-            console.log('No YAML block found or match[1] is not a string');
+            logger.debug('No YAML block found or match[1] is not a string');
             return null;
         }
 
         let control;
         try {
             const yamlContent = yaml.load(yamlMatch[1]);
-            console.log('YAML content parsed:', yamlContent);
+            logger.debug(`YAML content parsed: ${JSON.stringify(yamlContent)}`);
             control = ControlYamlSchema.parse(yamlContent);
-            console.log('Control schema parsed:', control);
+            logger.debug(`Control schema parsed: ${JSON.stringify(control)}`);
         } catch (e) {
-            console.log('Error parsing YAML or control schema:', e);
+            logger.debug(`Error parsing YAML or control schema: ${e}`);
             return null;
         }
 
@@ -58,28 +59,28 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         const matchedBlocks: string[] = [];
         
         let match;
-        console.log('Looking for code blocks...');
+        logger.debug('Looking for code blocks...');
         let blockCount = 0;
         while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
             blockCount++;
-            console.log(`Found code block #${blockCount}`, match);
+            logger.debug(`Found code block #${blockCount}`);
             const [fullMatch, commentHeaderLine, spaceHeaderLine, rawContent] = match;
 
             // Get the header line from either the comment style or space style
             const headerLineUntrimmed = commentHeaderLine || spaceHeaderLine || '';
             
             if (typeof headerLineUntrimmed !== 'string' || typeof rawContent !== 'string') {
-                console.log('Header line or raw content is not a string, skipping');
+                logger.debug('Header line or raw content is not a string, skipping');
                 continue;
             }
 
             const headerLine = headerLineUntrimmed.trim();
             if (headerLine === '') {
-                console.log('Empty header line, skipping');
+                logger.debug('Empty header line, skipping');
                 continue;
             }
 
-            console.log('Header line:', headerLine);
+            logger.debug(`Header line: ${headerLine}`);
             matchedBlocks.push(fullMatch);
             const content = rawContent.trim();
             
@@ -92,7 +93,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                 const strategyStr = quotedMatch[2] || '';
                 const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
                 if (!parsedStrategy.success) {
-                    console.log('Invalid patch strategy for quoted path, skipping');
+                    logger.debug('Invalid patch strategy for quoted path, skipping');
                     continue;
                 }
                 patchStrategy = parsedStrategy.data;
@@ -102,7 +103,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                     const strategyStr = parts.pop()!;
                     const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
                     if (!parsedStrategy.success) {
-                        console.log('Invalid patch strategy, skipping');
+                        logger.debug('Invalid patch strategy, skipping');
                         continue;
                     }
                     patchStrategy = parsedStrategy.data;
@@ -113,20 +114,20 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                 }
             }
 
-            console.log('File path:', filePath);
-            console.log('Patch strategy:', patchStrategy);
+            logger.debug(`File path: ${filePath}`);
+            logger.debug(`Patch strategy: ${patchStrategy}`);
             
             if (!filePath) {
-                console.log('Empty file path, skipping');
+                logger.debug('Empty file path, skipping');
                 continue;
             }
 
             if (content === DELETE_FILE_MARKER) {
-                console.log('Adding delete operation for:', filePath);
+                logger.debug(`Adding delete operation for: ${filePath}`);
                 operations.push({ type: 'delete', path: filePath });
             } else {
                 const cleanContent = extractCodeBetweenMarkers(content);
-                console.log('Adding write operation for:', filePath);
+                logger.debug(`Adding write operation for: ${filePath}`);
                 operations.push({ 
                     type: 'write', 
                     path: filePath, 
@@ -136,7 +137,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             }
         }
         
-        console.log('Found', blockCount, 'code blocks,', operations.length, 'operations');
+        logger.debug(`Found ${blockCount} code blocks, ${operations.length} operations`);
         
         let reasoningText = textWithoutYaml;
         for (const block of matchedBlocks) {
@@ -145,7 +146,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
 
         if (operations.length === 0) {
-            console.log('No operations found, returning null');
+            logger.debug('No operations found, returning null');
             return null;
         }
 
@@ -155,17 +156,17 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                 operations,
                 reasoning,
             });
-            console.log('Successfully parsed LLM response');
+            logger.debug('Successfully parsed LLM response');
             return parsedResponse;
         } catch (e) {
-            console.log('Error parsing final response schema:', e);
+            logger.debug(`Error parsing final response schema: ${e}`);
             return null;
         }
     } catch (e) {
         if (e instanceof z.ZodError) {
-            console.log('ZodError:', e.errors);
+            logger.debug(`ZodError: ${JSON.stringify(e.errors)}`);
         } else {
-            console.log('Unexpected error:', e);
+            logger.debug(`Unexpected error: ${e}`);
         }
         return null;
     }

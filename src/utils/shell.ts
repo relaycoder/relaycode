@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import path from 'path';
+import { logger } from './logger';
 
 type ExecutionResult = {
   exitCode: number;
@@ -22,7 +23,7 @@ export const executeShellCommand = (command: string, cwd = process.cwd()): Promi
       ? `powershell -Command "${command.replace(/"/g, '\\"')}"`
       : command;
       
-    console.log(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
+    logger.debug(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
     
     exec(finalCommand, { cwd: normalizedCwd }, (error, stdout, stderr) => {
       const exitCode = error ? error.code || 1 : 0;

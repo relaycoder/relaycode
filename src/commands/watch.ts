@@ -15,7 +15,9 @@ export const watchCommand = async (): Promise<void> => {
     process.exit(1);
   }
   
+  logger.setLevel(config.logLevel);
   logger.success('Configuration loaded. Starting relaycode watch...');
+  logger.debug(`Log level set to: ${config.logLevel}`);
 
   createClipboardWatcher(config.clipboardPollInterval, async (content) => {
     logger.info('New clipboard content detected. Attempting to parse...');
