@@ -37,6 +37,11 @@ export const FileOperationSchema = z.union([
     type: z.literal('delete'),
     path: z.string(),
   }),
+  z.object({
+    type: z.literal('rename'),
+    from: z.string(),
+    to: z.string(),
+  }),
 ]);
 export type FileOperation = z.infer<typeof FileOperationSchema>;
 

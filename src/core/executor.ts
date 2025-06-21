@@ -32,6 +32,22 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   }
 };
 
+export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
+  const fromAbsolutePath = path.resolve(cwd, fromPath);
+  const toAbsolutePath = path.resolve(cwd, toPath);
+  await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
+  try {
+    await fs.rename(fromAbsolutePath, toAbsolutePath);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(fromAbsolutePath, toAbsolutePath);
+      await fs.unlink(fromAbsolutePath);
+    } else {
+      throw error;
+    }
+  }
+};
+
 export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
   const snapshot: FileSnapshot = {};
   
@@ -69,6 +85,9 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
   await Promise.all(operations.map(async op => {
     if (op.type === 'delete') {
       return deleteFile(op.path, cwd);
+    }
+    if (op.type === 'rename') {
+      return renameFile(op.from, op.to, cwd);
     } 
     
     if (op.patchStrategy === 'replace') {

@@ -28,6 +28,8 @@
     "useGitignore": true,
     "useDefaultPatterns": true,
     "customPatterns": [
+      ".relaycode",
+      "fallbacks",
       ".cursor",
       "docs",
       "node_modules",

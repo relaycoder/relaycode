@@ -121,6 +121,13 @@ Repeat this block for each replacement.
     \`\`\`typescript // "path/to/My Old Component.ts"
     //TODO: delete this file
     \`\`\`
+-   **Renaming/Moving a file**:
+    \`\`\`json // rename-file
+    {
+      "from": "src/old/path/to/file.ts",
+      "to": "src/new/path/to/file.ts"
+    }
+    \`\`\`
 `;
 
     const finalSteps = `---

@@ -14,6 +14,9 @@ type ProcessPatchOptions = {
 };
 
 const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, cwd: string): Promise<{ added: number; removed: number }> => {
+    if (op.type === 'rename') {
+        return { added: 0, removed: 0 };
+    }
     const oldContent = snapshot[op.path] ?? null;
 
     if (op.type === 'delete') {
@@ -107,7 +110,14 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     logger.info(`🚀 Starting transaction for patch ${uuid}...`);
     logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
 
-    const affectedFilePaths = operations.map(op => op.path);
+    const affectedFilePaths = operations.reduce<string[]>((acc, op) => {
+        if (op.type === 'rename') {
+            acc.push(op.from, op.to);
+        } else {
+            acc.push(op.path);
+        }
+        return acc;
+    }, []);
     const snapshot = await createSnapshot(affectedFilePaths, cwd);
     
     const stateFile: StateFile = {
@@ -127,8 +137,10 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             const stats = await calculateLineChanges(op, snapshot, cwd);
             if (op.type === 'write') {
                 logger.success(`✔ Written: ${op.path} (+${stats.added}, -${stats.removed})`);
-            } else {
+            } else if (op.type === 'delete') {
                 logger.success(`✔ Deleted: ${op.path}`);
+            } else if (op.type === 'rename') {
+                logger.success(`✔ Renamed: ${op.from} -> ${op.to}`);
             }
             return stats;
         });

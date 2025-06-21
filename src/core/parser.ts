@@ -75,6 +75,24 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             }
 
             const headerLine = headerLineUntrimmed.trim();
+            const content = rawContent.trim();
+
+            // Handle rename operation as a special case
+            if (headerLine === 'rename-file') {
+                logger.debug(`Found rename-file operation`);
+                matchedBlocks.push(fullMatch);
+                try {
+                    const renameData = JSON.parse(content);
+                    const RenameFileContentSchema = z.object({ from: z.string().min(1), to: z.string().min(1) });
+                    const renameOp = RenameFileContentSchema.parse(renameData);
+                    operations.push({ type: 'rename', from: renameOp.from, to: renameOp.to });
+                } catch (e) {
+                    logger.debug(`Invalid rename operation content, skipping: ${e instanceof Error ? e.message : String(e)}`);
+                }
+                continue;
+            }
+
+
             if (headerLine === '') {
                 logger.debug('Empty header line, skipping');
                 continue;
@@ -82,7 +100,6 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
 
             logger.debug(`Header line: ${headerLine}`);
             matchedBlocks.push(fullMatch);
-            const content = rawContent.trim();
             
             let filePath = '';
             let patchStrategy: PatchStrategy;
