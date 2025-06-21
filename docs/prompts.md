@@ -289,3 +289,6 @@ add test cases about below features to verify implementation
 - File Rename/Move
 - Automatic Patch Strategy Detection:  Relaycode could inspect its content to infer the strategy.
 
+__________________________________________________
+
+add test cases about relay undo to verify implementation

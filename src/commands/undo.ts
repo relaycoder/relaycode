@@ -4,9 +4,12 @@ import { logger } from '../utils/logger';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { findLatestStateFile } from '../core/state';
 import { restoreSnapshot } from '../core/executor';
-import { getConfirmation } from '../utils/prompt';
+import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
 
-export const undoCommand = async (cwd: string = process.cwd()): Promise<void> => {
+type Prompter = (question: string) => Promise<boolean>;
+
+export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
+    const getConfirmation = prompter || defaultGetConfirmation;
     logger.info('Attempting to undo the last transaction...');
 
     const latestTransaction = await findLatestStateFile(cwd);
