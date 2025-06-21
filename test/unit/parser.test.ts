@@ -216,7 +216,7 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
             }
         });
 
-        it('should return null for an unknown patch strategy', () => {
+        it('should treat an unknown patch strategy as part of the file path', () => {
             const filePath = 'src/index.ts';
             const content = 'console.log("hello");';
             const block = `
@@ -224,8 +224,14 @@ ${LLM_RESPONSE_END(testUuid, [{edit: filePath}])}
 ${content}
 \`\`\`
             `;
-            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: filePath }]);
-            expect(parseLLMResponse(response)).toBeNull();
+            const fullPath = `${filePath} unknown-strategy`;
+            const response = block + LLM_RESPONSE_END(uuidv4(), [{ edit: fullPath }]);
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            expect(parsed!.operations).toHaveLength(1);
+            const op = parsed!.operations[0]!;
+            expect(op.type).toBe('write');
+            expect(op.path).toBe(fullPath);
         });
     });
 

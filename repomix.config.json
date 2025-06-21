@@ -40,7 +40,8 @@
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
       "REQUIREMENT.md",
-      "test"
+      // "test",
+      "test/fixtures"
     ]
   },
   "security": {

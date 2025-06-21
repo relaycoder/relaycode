@@ -167,10 +167,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
         
         let isApproved: boolean;
-        if (config.approval === 'no') {
-            logger.warn('  - Bypassing approval step because "approval" is set to "no". Committing changes directly.');
-            isApproved = true;
-        } else { // config.approval === 'yes'
+        if (config.approval === 'yes') { // config.approval === 'yes' is default, allows auto-approval
             const canAutoApprove = finalErrorCount <= config.approvalOnErrorCount;
 
             if (canAutoApprove) {
@@ -180,6 +177,10 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
                 notifyApprovalRequired(config.projectId);
                 isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
             }
+        } else { // config.approval === 'no' now means "always prompt"
+            logger.warn('Manual approval required because "approval" is set to "no".');
+            notifyApprovalRequired(config.projectId);
+            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
         }
 
         if (isApproved) {

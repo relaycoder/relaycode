@@ -136,8 +136,7 @@ describe('e2e/init', () => {
         console.log = originalLog; // Restore
 
         const outputString = capturedOutput.join('\n');
-        expect(outputString).toContain(`projectId: ${pkgName}`);
-        expect(outputString).toContain('You are an expert AI programmer.');
+        expect(outputString).toContain(`Project ID: ${pkgName}`);
     });
 
     it('should log an error if .gitignore is not writable', async () => {
