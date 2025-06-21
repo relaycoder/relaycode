@@ -46,17 +46,13 @@ const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, c
 const logCompletionSummary = (
     uuid: string,
     startTime: number,
-    operations: FileOperation[],
-    opStats: Array<{ added: number; removed: number }>
+    operations: FileOperation[]
 ) => {
     const duration = performance.now() - startTime;
-    const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
-    const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
 
     logger.log('\nSummary:');
     logger.log(`Applied ${operations.length} file operation(s) successfully.`);
-    logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
-    logger.log(`Completed in ${duration.toFixed(2)}ms`);
+    logger.log(`Total time from start to commit: ${duration.toFixed(2)}ms`);
     logger.success(`✅ Transaction ${uuid} committed successfully!`);
 };
 
@@ -157,25 +153,40 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             }
         }
 
+        // Log summary before asking for approval
+        const checksDuration = performance.now() - startTime;
+        const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
+        const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
+
+        logger.log('\nPre-flight summary:');
+        logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
+        logger.log(`Checks completed in ${checksDuration.toFixed(2)}ms`);
+
         // Check for approval
         const finalErrorCount = await getErrorCount(config.linter, cwd);
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
-        const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
         
         let isApproved: boolean;
-        if (canAutoApprove) {
-            logger.success('  - Changes automatically approved based on your configuration.');
+        if (config.approval === 'no') {
+            logger.warn('  - Bypassing approval step because "approval" is set to "no". Committing changes directly.');
             isApproved = true;
-        } else {
-            notifyApprovalRequired(config.projectId);
-            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        } else { // config.approval === 'yes'
+            const canAutoApprove = finalErrorCount <= config.approvalOnErrorCount;
+
+            if (canAutoApprove) {
+                logger.success('  - Changes automatically approved based on your configuration.');
+                isApproved = true;
+            } else {
+                notifyApprovalRequired(config.projectId);
+                isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+            }
         }
 
         if (isApproved) {
             stateFile.approved = true;
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
-            logCompletionSummary(uuid, startTime, operations, opStats);
+            logCompletionSummary(uuid, startTime, operations);
             notifySuccess(uuid);
         } else {
             throw new Error('Changes were not approved.');

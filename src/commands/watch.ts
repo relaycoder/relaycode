@@ -201,8 +201,14 @@ export const watchCommand = async (): Promise<void> => {
         return;
       }
 
+      // Check project ID before notifying and processing.
+      if (parsedResponse.control.projectId !== config.projectId) {
+        logger.debug(`Ignoring patch for different project (expected '${config.projectId}', got '${parsedResponse.control.projectId}').`);
+        return;
+      }
+
       notifyPatchDetected(config.projectId);
-      logger.success('Valid patch format detected. Processing...');
+      logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
       await processPatch(config, parsedResponse);
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');

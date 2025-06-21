@@ -64,32 +64,38 @@ program
 
 program
   .command('init')
+  .alias('i')
   .description('Initializes relaycode in the current project.')
   .action(() => initCommand());
 
 program
   .command('watch')
+  .alias('w')
   .description('Starts watching the clipboard for code changes to apply.')
   .action(watchCommand);
 
 program
   .command('apply')
+  .alias('a')
   .description('Applies a patch from a specified file.')
   .argument('<filePath>', 'The path to the file containing the patch.')
   .action(applyCommand);
 
 program
   .command('log')
+  .alias('l')
   .description('Displays a log of all committed transactions.')
-  .action(logCommand);
+  .action(() => logCommand());
 
 program
   .command('undo')
+  .alias('u')
   .description('Reverts the last successfully committed transaction.')
-  .action(undoCommand);
+  .action(() => undoCommand());
 
 program
   .command('revert')
+  .alias('r')
   .description('Reverts a committed transaction by its UUID.')
   .argument('<uuid>', 'The UUID of the transaction to revert.')
   .action(revertCommand);

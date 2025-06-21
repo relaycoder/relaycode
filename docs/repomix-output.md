@@ -536,21 +536,6 @@ export { logger } from './utils/logger';
 export { getConfirmation } from './utils/prompt';
 ````
 
-## File: relaycode.config.json
-````json
-{
-  "projectId": "relaycode",
-  "logLevel": "info",
-  "clipboardPollInterval": 2000,
-  "approval": "no",
-  "approvalOnErrorCount": 0,
-  "linter": "bun tsc -b --noEmit",
-  "preCommand": "",
-  "postCommand": "",
-  "preferredStrategy": "new-unified"
-}
-````
-
 ## File: src/core/config.ts
 ````typescript
 import { z } from 'zod';
@@ -615,6 +600,21 @@ export const getProjectId = async (cwd: string = process.cwd()): Promise<string>
     }
     return path.basename(cwd);
 };
+````
+
+## File: relaycode.config.json
+````json
+{
+  "projectId": "relaycode",
+  "logLevel": "info",
+  "clipboardPollInterval": 2000,
+  "approval": "no",
+  "approvalOnErrorCount": 0,
+  "linter": "bun tsc -b --noEmit",
+  "preCommand": "",
+  "postCommand": "",
+  "preferredStrategy": "auto"
+}
 ````
 
 ## File: src/types.ts
@@ -968,113 +968,6 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
-}
-````
-
-## File: src/cli.ts
-````typescript
-#!/usr/bin/env node
-import { Command } from 'commander';
-import { initCommand } from './commands/init';
-import { watchCommand } from './commands/watch';
-import { logCommand } from './commands/log';
-import { undoCommand } from './commands/undo';
-import { revertCommand } from './commands/revert';
-import { applyCommand } from './commands/apply';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import fs from 'node:fs';
-
-// Default version in case we can't find the package.json
-let version = '0.0.0';
-
-try {
-  // Try multiple strategies to find the package.json
-  const require = createRequire(import.meta.url);
-  let pkg;
-  
-  // Strategy 1: Try to find package.json relative to the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  
-  // Try different possible locations
-  const possiblePaths = [
-    join(__dirname, 'package.json'),
-    join(__dirname, '..', 'package.json'),
-    join(__dirname, '..', '..', 'package.json'),
-    resolve(process.cwd(), 'package.json')
-  ];
-  
-  let foundPath = null;
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      foundPath = path;
-      pkg = require(path);
-      break;
-    }
-  }
-  
-  // Strategy 2: If we still don't have it, try to get it from the npm package name
-  if (!pkg) {
-    try {
-      pkg = require('relaycode/package.json');
-    } catch (e) {
-      // Ignore this error
-    }
-  }
-  
-  if (pkg && pkg.version) {
-    version = pkg.version;
-  }
-} catch (error) {
-  // Fallback to default version if we can't find the package.json
-  console.error('Warning: Could not determine package version', error);
-}
-
-const program = new Command();
-
-program
-  .name('relay')
-  .version(version)
-  .description('A developer assistant that automates applying code changes from LLMs.');
-
-program
-  .command('init')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
-
-program
-  .command('watch')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(watchCommand);
-
-program
-  .command('apply')
-  .description('Applies a patch from a specified file.')
-  .argument('<filePath>', 'The path to the file containing the patch.')
-  .action(applyCommand);
-
-program
-  .command('log')
-  .description('Displays a log of all committed transactions.')
-  .action(logCommand);
-
-program
-  .command('undo')
-  .description('Reverts the last successfully committed transaction.')
-  .action(undoCommand);
-
-program
-  .command('revert')
-  .description('Reverts a committed transaction by its UUID.')
-  .argument('<uuid>', 'The UUID of the transaction to revert.')
-  .action(revertCommand);
-
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
 }
 ````
 
@@ -1470,6 +1363,111 @@ export const createClipboardWatcher = (
 };
 ````
 
+## File: src/cli.ts
+````typescript
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { watchCommand } from './commands/watch';
+import { logCommand } from './commands/log';
+import { undoCommand } from './commands/undo';
+import { revertCommand } from './commands/revert';
+import { applyCommand } from './commands/apply';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import fs from 'node:fs';
+
+// Default version in case we can't find the package.json
+let version = '0.0.0';
+
+try {
+  // Try multiple strategies to find the package.json
+  const require = createRequire(import.meta.url);
+  let pkg;
+  
+  // Strategy 1: Try to find package.json relative to the current file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  
+  // Try different possible locations
+  const possiblePaths = [
+    join(__dirname, 'package.json'),
+    join(__dirname, '..', 'package.json'),
+    join(__dirname, '..', '..', 'package.json'),
+    resolve(process.cwd(), 'package.json')
+  ];
+  
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      pkg = require(path);
+      break;
+    }
+  }
+  
+  // Strategy 2: If we still don't have it, try to get it from the npm package name
+  if (!pkg) {
+    try {
+      pkg = require('relaycode/package.json');
+    } catch (e) {
+      // Ignore this error
+    }
+  }
+  
+  if (pkg && pkg.version) {
+    version = pkg.version;
+  }
+} catch (error) {
+  // Fallback to default version if we can't find the package.json
+  console.error('Warning: Could not determine package version', error);
+}
+
+const program = new Command();
+
+program
+  .name('relay')
+  .version(version)
+  .description('A developer assistant that automates applying code changes from LLMs.');
+
+program
+  .command('init')
+  .description('Initializes relaycode in the current project.')
+  .action(() => initCommand());
+
+program
+  .command('watch')
+  .description('Starts watching the clipboard for code changes to apply.')
+  .action(watchCommand);
+
+program
+  .command('apply')
+  .description('Applies a patch from a specified file.')
+  .argument('<filePath>', 'The path to the file containing the patch.')
+  .action(applyCommand);
+
+program
+  .command('log')
+  .description('Displays a log of all committed transactions.')
+  .action(() => logCommand());
+
+program
+  .command('undo')
+  .description('Reverts the last successfully committed transaction.')
+  .action(() => undoCommand());
+
+program
+  .command('revert')
+  .description('Reverts a committed transaction by its UUID.')
+  .argument('<uuid>', 'The UUID of the transaction to revert.')
+  .action(revertCommand);
+
+program.parse(process.argv);
+
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
+}
+````
+
 ## File: src/core/executor.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -1556,30 +1554,36 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
 };
 
 export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
-  await Promise.all(operations.map(async op => {
+  // Operations must be applied sequentially to ensure that if one fails,
+  // we can roll back from a known state.
+  for (const op of operations) {
     if (op.type === 'delete') {
-      return deleteFile(op.path, cwd);
+      await deleteFile(op.path, cwd);
+      continue;
     }
     if (op.type === 'rename') {
-      return renameFile(op.from, op.to, cwd);
+      await renameFile(op.from, op.to, cwd);
+      continue;
     } 
     
     if (op.patchStrategy === 'replace') {
-      return writeFileContent(op.path, op.content, cwd);
+      await writeFileContent(op.path, op.content, cwd);
+      continue;
     }
 
+    // For patch strategies, apply them sequentially
     const originalContent = await readFileContent(op.path, cwd);
     if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
       throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
     }
 
-    const diffParams = {
-      originalContent: originalContent ?? '',
-      diffContent: op.content,
-    };
-
-    let result;
     try {
+      const diffParams = {
+        originalContent: originalContent ?? '',
+        diffContent: op.content,
+      };
+
+      let result;
       switch (op.patchStrategy) {
         case 'new-unified':
           const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
@@ -1603,7 +1607,7 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
     } catch (e) {
       throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  }));
+  }
 };
 
 // Helper to check if a directory is empty
@@ -1644,8 +1648,8 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
   const entries = Object.entries(snapshot);
   const directoriesDeleted = new Set<string>();
 
-  // First handle all file operations in parallel
-  await Promise.all(entries.map(async ([filePath, content]) => {
+  // Handle all file operations sequentially to ensure atomicity during rollback
+  for (const [filePath, content] of entries) {
     const fullPath = path.resolve(cwd, filePath);
     try {
       if (content === null) {
@@ -1672,7 +1676,7 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
       console.error(`Failed to restore ${filePath}:`, error);
       throw error;
     }
-  }));
+  }
   
   // After all files are processed, clean up empty directories
   // Sort directories by depth (deepest first) to clean up nested empty dirs properly
@@ -1792,32 +1796,47 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             matchedBlocks.push(fullMatch);
             
             let filePath = '';
-            let patchStrategy: PatchStrategy;
+            let strategyProvided = false;
+            let patchStrategy: PatchStrategy = 'replace'; // Default
             
             const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
             if (quotedMatch) {
                 filePath = quotedMatch[1]!;
-                const strategyStr = quotedMatch[2] || '';
-                const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
-                if (!parsedStrategy.success) {
-                    logger.debug('Invalid patch strategy for quoted path, skipping');
-                    continue;
-                }
-                patchStrategy = parsedStrategy.data;
-            } else {
-                const parts = headerLine.split(/\s+/);
-                if (parts.length > 1) {
-                    const strategyStr = parts.pop()!;
+                const strategyStr = (quotedMatch[2] || '').trim();
+                if (strategyStr) {
                     const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
                     if (!parsedStrategy.success) {
-                        logger.debug('Invalid patch strategy, skipping');
+                        logger.debug('Invalid patch strategy for quoted path, skipping');
                         continue;
                     }
                     patchStrategy = parsedStrategy.data;
-                    filePath = parts.join(' ');
+                    strategyProvided = true;
+                }
+            } else {
+                const parts = headerLine.split(/\s+/);
+                if (parts.length > 1) {
+                    const potentialStrategy = parts[parts.length - 1]; // peek
+                    const parsedStrategy = PatchStrategySchema.safeParse(potentialStrategy);
+                    if (!parsedStrategy.success) {
+                        filePath = parts.join(' ');
+                    } else {
+                        parts.pop(); // consume
+                        patchStrategy = parsedStrategy.data;
+                        strategyProvided = true;
+                        filePath = parts.join(' ');
+                    }
                 } else {
                     filePath = headerLine;
-                    patchStrategy = PatchStrategySchema.parse(undefined);
+                }
+            }
+
+            if (!strategyProvided) {
+                if (content.includes('<<<<<<< SEARCH')) {
+                    patchStrategy = 'multi-search-replace';
+                    logger.debug('Inferred patch strategy: multi-search-replace');
+                } else if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) {
+                    patchStrategy = 'new-unified';
+                    logger.debug('Inferred patch strategy: new-unified');
                 }
             }
 
@@ -2075,7 +2094,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 ````json
 {
   "name": "relaycode",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
   "main": "./dist/index.js",

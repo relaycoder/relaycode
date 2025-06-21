@@ -89,9 +89,9 @@
 
 
 #### ✅ DONE: add version to relay
-#### Transaction rolleed back still not really making all affected files to original state especially the failed file.
-#### shorhands commands not working, also commands without -- not working.
-#### ms took should be shown before asking approval
-#### system notification should fired on matched project id, not on valid patch format
-#### it still asking for approval on approval off in config setup
+#### VERIFY: Transaction rolleed back still not really making all affected files to original state especially the failed file.
+#### VERIFY: shorhands commands not working, also commands without -- not working.
+#### VERIFY: ms took should be shown before asking approval
+#### VERIFY: system notification should fired on matched project id, not on valid patch format
+#### VERIFY: it still asking for approval on approval off in config setup
 #### words level chalk
