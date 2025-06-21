@@ -31,10 +31,8 @@ try {
     resolve(process.cwd(), 'package.json')
   ];
   
-  let foundPath = null;
   for (const path of possiblePaths) {
     if (fs.existsSync(path)) {
-      foundPath = path;
       pkg = require(path);
       break;
     }

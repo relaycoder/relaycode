@@ -102,32 +102,47 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             matchedBlocks.push(fullMatch);
             
             let filePath = '';
-            let patchStrategy: PatchStrategy;
+            let strategyProvided = false;
+            let patchStrategy: PatchStrategy = 'replace'; // Default
             
             const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
             if (quotedMatch) {
                 filePath = quotedMatch[1]!;
-                const strategyStr = quotedMatch[2] || '';
-                const parsedStrategy = PatchStrategySchema.safeParse(strategyStr || undefined);
-                if (!parsedStrategy.success) {
-                    logger.debug('Invalid patch strategy for quoted path, skipping');
-                    continue;
-                }
-                patchStrategy = parsedStrategy.data;
-            } else {
-                const parts = headerLine.split(/\s+/);
-                if (parts.length > 1) {
-                    const strategyStr = parts.pop()!;
+                const strategyStr = (quotedMatch[2] || '').trim();
+                if (strategyStr) {
                     const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
                     if (!parsedStrategy.success) {
-                        logger.debug('Invalid patch strategy, skipping');
+                        logger.debug('Invalid patch strategy for quoted path, skipping');
                         continue;
                     }
                     patchStrategy = parsedStrategy.data;
-                    filePath = parts.join(' ');
+                    strategyProvided = true;
+                }
+            } else {
+                const parts = headerLine.split(/\s+/);
+                if (parts.length > 1) {
+                    const potentialStrategy = parts[parts.length - 1]; // peek
+                    const parsedStrategy = PatchStrategySchema.safeParse(potentialStrategy);
+                    if (!parsedStrategy.success) {
+                        filePath = parts.join(' ');
+                    } else {
+                        parts.pop(); // consume
+                        patchStrategy = parsedStrategy.data;
+                        strategyProvided = true;
+                        filePath = parts.join(' ');
+                    }
                 } else {
                     filePath = headerLine;
-                    patchStrategy = PatchStrategySchema.parse(undefined);
+                }
+            }
+
+            if (!strategyProvided) {
+                if (content.includes('<<<<<<< SEARCH')) {
+                    patchStrategy = 'multi-search-replace';
+                    logger.debug('Inferred patch strategy: multi-search-replace');
+                } else if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) {
+                    patchStrategy = 'new-unified';
+                    logger.debug('Inferred patch strategy: new-unified');
                 }
             }
 

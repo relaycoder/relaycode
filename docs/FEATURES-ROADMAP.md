@@ -3,7 +3,7 @@
 -   **Why:** Provides a critical safety net. If a developer accepts a change and only later realizes it was a mistake, this offers a one-command escape hatch without needing to manually revert files or rely on Git.
 -   **Implementation:** The command would find the most recent `.yml` file in the `.relaycode` directory, read its `snapshot` data, and call the existing `restoreSnapshot` function. The corresponding `.yml` file would then be deleted or moved to an `undone/` subdirectory.
 
-#### Apply Patch from File (`relay apply <path-to-patch-file>`)
+#### ✅ Apply Patch from File (`relay apply <path-to-patch-file>`)
 -   **What:** A new command to process a patch saved in a local file instead of watching the clipboard.
 -   **Why:**
     1.  **Decouples from Clipboard:** Enables use cases where copying/pasting is inconvenient (e.g., long-term storage of patches, scripted automation).
@@ -56,7 +56,7 @@
     -   **On success/failure:** "Relaycode: Patch `uuid` applied successfully." or "Relaycode: Patch `uuid` failed and was rolled back."
 
 
-#### Automatic Patch Strategy Detection
+#### ✅ DONE Automatic Patch Strategy Detection
 -   **What:** If a patch strategy is omitted in a code block, Relaycode could inspect its content to infer the strategy.
 -   **Why:** Reduces the verbosity and "brittleness" of the LLM prompt. The LLM can focus on generating the correct content, not just the correct syntax.
 -   **Heuristics:**
@@ -89,5 +89,9 @@
 
 
 #### ✅ DONE: add version to relay
+#### Transaction rolleed back still not really making all affected files to original state especially the failed file.
+#### shorhands commands not working, also commands without -- not working.
+#### ms took should be shown before asking approval
 #### system notification should fired on matched project id, not on valid patch format
 #### it still asking for approval on approval off in config setup
+#### words level chalk
