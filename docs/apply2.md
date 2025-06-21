@@ -1,433 +1,190 @@
-Hello! As an expert AI programmer, I'd be happy to help you with your request. Adding a `preferredStrategy` to the configuration is a great idea for optimizing token usage and tailoring the AI's behavior. Here are the necessary code changes to implement this feature.
+Of course! I can help you with that. Dealing with platform-specific clipboard behavior can be tricky, and adding a version to your CLI is a great improvement for usability.
 
-I've updated the `init` command to provide guidance on the new configuration and adjusted the `watch` command to generate and display the system prompt based on your settings.
+Here are the code changes to fix the Windows clipboard issue and add the version number to your `relay` command:
 
-### File Changes:
+### 1. Robust Windows Clipboard Handling
 
-```typescript // src/types.ts
-import { z } from 'zod';
+I'll update `src/core/clipboard.ts` to handle cases where the clipboard is empty or contains non-text data more gracefully. Instead of letting the underlying executable panic and crash, it will now treat these situations as "no new text content" and continue watching without logging disruptive errors.
 
-export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'debug']).default('info');
-export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
+### 2. CLI Version Display
 
-// Schema for relaycode.config.json
-export const ConfigSchema = z.object({
-  projectId: z.string().min(1),
-  logLevel: LogLevelNameSchema,
-  clipboardPollInterval: z.number().int().positive().default(2000),
-  approval: z.enum(['yes', 'no']).default('yes'),
-  approvalOnErrorCount: z.number().int().min(0).default(0),
-  linter: z.string().default('bun tsc --noEmit'),
-  preCommand: z.string().default(''),
-  postCommand: z.string().default(''),
-  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
-});
-export type Config = z.infer<typeof ConfigSchema>;
+I'll modify `src/cli.ts` to read your project's version from `package.json` and add the standard `--version` and `-v` flags to your command-line interface.
 
-export const PatchStrategySchema = z.enum([
-  'replace',
-  'new-unified',
-  'multi-search-replace',
-  'unified',
-]).default('replace');
-export type PatchStrategy = z.infer<typeof PatchStrategySchema>;
+Here are the full contents of the affected files:
 
-// Schema for operations parsed from code blocks
-export const FileOperationSchema = z.union([
-  z.object({
-    type: z.literal('write'),
-    path: z.string(),
-    content: z.string(),
-    patchStrategy: PatchStrategySchema,
-  }),
-  z.object({
-    type: z.literal('delete'),
-    path: z.string(),
-  }),
-]);
-export type FileOperation = z.infer<typeof FileOperationSchema>;
+```typescript // src/cli.ts
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { watchCommand } from './commands/watch';
+import { createRequire } from 'node:module';
 
-// Schema for the control YAML block at the end of the LLM response
-export const ControlYamlSchema = z.object({
-  projectId: z.string(),
-  uuid: z.string().uuid(),
-  changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
-});
-export type ControlYaml = z.infer<typeof ControlYamlSchema>;
+// Use createRequire to safely import JSON in an ES module context
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json');
 
-// The fully parsed response from the clipboard
-export const ParsedLLMResponseSchema = z.object({
-  control: ControlYamlSchema,
-  operations: z.array(FileOperationSchema),
-  reasoning: z.array(z.string()),
-});
-export type ParsedLLMResponse = z.infer<typeof ParsedLLMResponseSchema>;
+const program = new Command();
 
-// Schema for the snapshot of original files
-export const FileSnapshotSchema = z.record(z.string(), z.string().nullable()); // path -> content | null (if file didn't exist)
-export type FileSnapshot = z.infer<typeof FileSnapshotSchema>;
+program
+  .name('relay')
+  .version(pkg.version) // Add version from package.json
+  .description('A developer assistant that automates applying code changes from LLMs.');
 
-// Schema for the state file (.relaycode/{uuid}.yml or .pending.yml)
-export const StateFileSchema = z.object({
-  uuid: z.string().uuid(),
-  projectId: z.string(),
-  createdAt: z.string().datetime(),
-  reasoning: z.array(z.string()),
-  operations: z.array(FileOperationSchema),
-  snapshot: FileSnapshotSchema,
-  approved: z.boolean(),
-});
-export type StateFile = z.infer<typeof StateFileSchema>;
+program
+  .command('init')
+  .description('Initializes relaycode in the current project.')
+  .action(() => initCommand());
 
-// Shell command execution result
-export const ShellCommandResultSchema = z.object({
-    stdout: z.string(),
-    stderr: z.string(),
-    exitCode: z.number().nullable(),
-});
-export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
-```
+program
+  .command('watch')
+  .description('Starts watching the clipboard for code changes to apply.')
+  .action(watchCommand);
 
-```typescript // src/core/config.ts
-import { z } from 'zod';
-import path from 'path';
-import { promises as fs } from 'fs';
-import { Config, ConfigSchema } from '../types';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
+program.parse(process.argv);
 
-export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
-  const configPath = path.join(cwd, CONFIG_FILE_NAME);
-  try {
-    const fileContent = await fs.readFile(configPath, 'utf-8');
-    const configJson = JSON.parse(fileContent);
-    return ConfigSchema.parse(configJson);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      return null;
-    }
-    if (error instanceof z.ZodError) {
-      throw new Error(`Invalid configuration in ${CONFIG_FILE_NAME}: ${error.message}`);
-    }
-    throw error;
-  }
-};
-
-export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
-    const config = {
-        projectId,
-        clipboardPollInterval: 2000,
-        approval: 'yes' as const,
-        approvalOnErrorCount: 0,
-        linter: 'bun tsc --noEmit',
-        preCommand: '',
-        postCommand: '',
-        preferredStrategy: 'auto' as const,
-    };
-    
-    // Ensure the schema defaults are applied, including for logLevel
-    const validatedConfig = ConfigSchema.parse(config);
-
-    const configPath = path.join(cwd, CONFIG_FILE_NAME);
-    await fs.writeFile(configPath, JSON.stringify(validatedConfig, null, 2));
-
-    return validatedConfig;
-};
-
-export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
-    const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
-    await fs.mkdir(stateDirPath, { recursive: true });
-};
-
-export const getProjectId = async (cwd: string = process.cwd()): Promise<string> => {
-    try {
-        const pkgJsonPath = path.join(cwd, 'package.json');
-        const fileContent = await fs.readFile(pkgJsonPath, 'utf-8');
-        const pkgJson = JSON.parse(fileContent);
-        if (pkgJson.name && typeof pkgJson.name === 'string') {
-            return pkgJson.name;
-        }
-    } catch (e) {
-        // Ignore if package.json doesn't exist or is invalid
-    }
-    return path.basename(cwd);
-};
-```
-
-```typescript // src/commands/init.ts
-import { promises as fs } from 'fs';
-import path from 'path';
-import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
-
-const getInitMessage = (projectId: string): string => `
-✅ relaycode has been initialized for this project.
-
-Configuration file created: ${CONFIG_FILE_NAME}
-
-Project ID: ${projectId}
-
-Next steps:
-1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
-   - 'auto' (default): The AI can choose the best patch strategy.
-   - 'new-unified': Forces the AI to use diffs, great for most changes.
-   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
-   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
-
-2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
-
-3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
-`;
-
-
-const updateGitignore = async (cwd: string): Promise<void> => {
-    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
-    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
-
-    try {
-        let content = await fs.readFile(gitignorePath, 'utf-8');
-        if (!content.includes(STATE_DIRECTORY_NAME)) {
-            content += entry;
-            await fs.writeFile(gitignorePath, content);
-            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
-        }
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            await fs.writeFile(gitignorePath, entry.trim());
-            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
-        } else {
-            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-};
-
-export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
-    logger.info('Initializing relaycode in this project...');
-
-    const config = await findConfig(cwd);
-    if (config) {
-        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        logger.log(`
-To use relaycode, please run 'relay watch'.
-It will display a system prompt to copy into your LLM assistant.
-You can review your configuration in ${CONFIG_FILE_NAME}.
-`);
-        return;
-    }
-    
-    const projectId = await getProjectId(cwd);
-    await createConfig(projectId, cwd);
-    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
-    
-    await ensureStateDirExists(cwd);
-    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
-
-    await updateGitignore(cwd);
-
-    logger.log(getInitMessage(projectId));
-};
-```
-
-```typescript // src/commands/watch.ts
-import { findConfig } from '../core/config';
-import { createClipboardWatcher } from '../core/clipboard';
-import { parseLLMResponse } from '../core/parser';
-import { processPatch } from '../core/transaction';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME } from '../utils/constants';
-import { notifyPatchDetected } from '../utils/notifier';
-import { Config } from '../types';
-
-const getSystemPrompt = (projectId: string, preferredStrategy: Config['preferredStrategy']): string => {
-    const header = `
-✅ relaycode is watching for changes.
-
-IMPORTANT: For relaycode to work, you must configure your AI assistant.
-Copy the entire text below and paste it into your LLM's "System Prompt"
-or "Custom Instructions" section.
----------------------------------------------------------------------------`;
-
-    const intro = `You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.`;
-
-    const syntaxAuto = `
-**Syntax:**
-\`\`\`typescript // filePath {patchStrategy}
-... content ...
-\`\`\`
-- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
-- \`patchStrategy\`: (Optional) One of \`new-unified\`, \`multi-search-replace\`. If omitted, the entire file is replaced (this is the \`replace\` strategy).
-
-**Examples:**
-\`\`\`typescript // src/components/Button.tsx
-...
-\`\`\`
-\`\`\`typescript // "src/components/My Component.tsx" new-unified
-...
-\`\`\``;
-
-    const syntaxReplace = `
-**Syntax:**
-\`\`\`typescript // filePath
-... content ...
-\`\`\`
-- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
-- Only the \`replace\` strategy is enabled. This means you must provide the ENTIRE file content for any change. This is suitable for creating new files or making changes to small files.`;
-
-    const syntaxNewUnified = `
-**Syntax:**
-\`\`\`typescript // filePath new-unified
-... diff content ...
-\`\`\`
-- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
-- You must use the \`new-unified\` patch strategy for all modifications.`;
-
-    const syntaxMultiSearchReplace = `
-**Syntax:**
-\`\`\`typescript // filePath multi-search-replace
-... diff content ...
-\`\`\`
-- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
-- You must use the \`multi-search-replace\` patch strategy for all modifications.`;
-
-    const sectionNewUnified = `---
-
-### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
-
-Use for most changes, like refactoring, adding features, and fixing bugs. It's resilient to minor changes in the source file.
-
-**Diff Format:**
-1.  **File Headers**: Start with \`--- {filePath}\` and \`+++ {filePath}\`.
-2.  **Hunk Header**: Use \`@@ ... @@\`. Exact line numbers are not needed.
-3.  **Context Lines**: Include 2-3 unchanged lines before and after your change for context.
-4.  **Changes**: Mark additions with \`+\` and removals with \`-\`. Maintain indentation.
-
-**Example:**
-\`\`\`diff
---- src/utils.ts
-+++ src/utils.ts
-@@ ... @@
-    function calculateTotal(items: number[]): number {
--      return items.reduce((sum, item) => {
--        return sum + item;
--      }, 0);
-+      const total = items.reduce((sum, item) => {
-+        return sum + item * 1.1;  // Add 10% markup
-+      }, 0);
-+      return Math.round(total * 100) / 100;  // Round to 2 decimal places
-+    }
-\`\`\`
-`;
-
-    const sectionMultiSearchReplace = `---
-
-### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
-
-Use for precise, surgical replacements. The \`SEARCH\` block must be an exact match of the content in the file.
-
-**Diff Format:**
-Repeat this block for each replacement.
-\`\`\`diff
-<<<<<<< SEARCH
-:start_line: (optional)
-:end_line: (optional)
--------
-[exact content to find including whitespace]
-=======
-[new content to replace with]
->>>>>>> REPLACE
-\`\`\`
-`;
-
-    const otherOps = `---
-
-### Other Operations
-
--   **Creating a file**: Use the default \`replace\` strategy (omit the strategy name) and provide the full file content.
--   **Deleting a file**:
-    \`\`\`typescript // path/to/file.ts
-    //TODO: delete this file
-    \`\`\`
-    \`\`\`typescript // "path/to/My Old Component.ts"
-    //TODO: delete this file
-    \`\`\`
-`;
-
-    const finalSteps = `---
-
-### Final Steps
-
-1.  Add your step-by-step reasoning in plain text before each code block.
-2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
-
-    \`\`\`yaml
-    projectId: ${projectId}
-    uuid: (generate a random uuid)
-    changeSummary:
-      - edit: src/main.ts
-      - new: src/components/Button.tsx
-      - delete: src/utils/old-helper.ts
-    \`\`\`
-`;
-    
-    const footer = `---------------------------------------------------------------------------`;
-
-    let syntax = '';
-    let strategyDetails = '';
-
-    switch (preferredStrategy) {
-        case 'replace':
-            syntax = syntaxReplace;
-            strategyDetails = ''; // Covered in 'otherOps'
-            break;
-        case 'new-unified':
-            syntax = syntaxNewUnified;
-            strategyDetails = sectionNewUnified;
-            break;
-        case 'multi-search-replace':
-            syntax = syntaxMultiSearchReplace;
-            strategyDetails = sectionMultiSearchReplace;
-            break;
-        case 'auto':
-        default:
-            syntax = syntaxAuto;
-            strategyDetails = `${sectionNewUnified}\n${sectionMultiSearchReplace}`;
-            break;
-    }
-
-    return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
 }
+```
 
-export const watchCommand = async (): Promise<void> => {
-  const config = await findConfig();
+```typescript // src/core/clipboard.ts
+import clipboardy from 'clipboardy';
+import { logger } from '../utils/logger';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
 
-  if (!config) {
-    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-    logger.info("Please run 'relay init' to create one.");
-    process.exit(1);
-  }
-  
-  logger.setLevel(config.logLevel);
-  logger.success('Configuration loaded. Starting relaycode watch...');
-  logger.debug(`Log level set to: ${config.logLevel}`);
-  logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+type ClipboardCallback = (content: string) => void;
+type ClipboardReader = () => Promise<string>;
 
-  // Display the system prompt
-  logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
 
-  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
-    logger.info('New clipboard content detected. Attempting to parse...');
-    const parsedResponse = parseLLMResponse(content);
-
-    if (!parsedResponse) {
-      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
-      return;
+// Direct Windows clipboard reader that uses the executable directly
+const createDirectWindowsClipboardReader = (): ClipboardReader => {
+  return () => new Promise((resolve) => {
+    try {
+      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
+      if (!fs.existsSync(localExePath)) {
+        logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
+        // Resolve with empty string to avoid stopping the watcher loop, but log an error.
+        return resolve('');
+      }
+      
+      const command = `"${localExePath}" --paste`;
+      
+      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (error) {
+          // It's common for the clipboard executable to fail if the clipboard is empty
+          // or contains non-text data (e.g., an image). We can treat this as "no content".
+          // We don't log this as an error to avoid spamming the console during normal use.
+          logger.debug(`Windows clipboard read command failed (this is often normal): ${stderr.trim()}`);
+          resolve('');
+        } else {
+          resolve(stdout);
+        }
+      });
+    } catch (syncError) {
+      // Catch synchronous errors during setup (e.g., path issues).
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      resolve('');
     }
-    
-    notifyPatchDetected(config.projectId);
-    logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse);
-    logger.info('--------------------------------------------------');
-    logger.info('Watching for next patch...');
   });
 };
+
+// Check if the clipboard executable exists and fix path issues on Windows
+const ensureClipboardExecutable = () => {
+  if (process.platform === 'win32') {
+    try {
+      // Try to find clipboard executables in common locations
+      const possiblePaths = [
+        // Global installation path
+        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
+        // Local installation paths
+        path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
+        path.join(process.cwd(), 'fallbacks', 'windows')
+      ];
+      
+      // Create fallbacks directory in the current project if it doesn't exist
+      const localFallbacksDir = path.join(process.cwd(), 'fallbacks', 'windows');
+      if (!fs.existsSync(localFallbacksDir)) {
+        fs.mkdirSync(localFallbacksDir, { recursive: true });
+      }
+      
+      // Find an existing executable
+      let sourceExePath = null;
+      for (const dir of possiblePaths) {
+        const exePath = path.join(dir, 'clipboard_x86_64.exe');
+        if (fs.existsSync(exePath)) {
+          sourceExePath = exePath;
+          break;
+        }
+      }
+      
+      // Copy the executable to the local fallbacks directory if found
+      if (sourceExePath && sourceExePath !== path.join(localFallbacksDir, 'clipboard_x86_64.exe')) {
+        fs.copyFileSync(sourceExePath, path.join(localFallbacksDir, 'clipboard_x86_64.exe'));
+        logger.info('Copied Windows clipboard executable to local fallbacks directory');
+      } else if (!sourceExePath) {
+        logger.error('Windows clipboard executable not found in any location');
+      }
+    } catch (error) {
+      logger.warn('Error ensuring clipboard executable: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+};
+
+export const createClipboardWatcher = (
+  pollInterval: number,
+  callback: ClipboardCallback,
+  reader?: ClipboardReader,
+) => {
+  // Ensure clipboard executable exists before starting
+  ensureClipboardExecutable();
+  
+  // On Windows, use the direct Windows reader
+  // Otherwise use the provided reader or clipboardy
+  const clipboardReader = process.platform === 'win32' ? 
+    createDirectWindowsClipboardReader() : 
+    reader || clipboardy.read;
+  
+  let lastContent = '';
+  let intervalId: NodeJS.Timeout | null = null;
+
+  const checkClipboard = async () => {
+    try {
+      const content = await clipboardReader();
+      if (content && content !== lastContent) {
+        lastContent = content;
+        callback(content);
+      }
+    } catch (error) {
+      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
+      // So we log a warning but don't stop the watcher.
+      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const start = () => {
+    if (intervalId) {
+      return;
+    }
+    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
+    // Immediately check once, then start the interval
+    checkClipboard();
+    intervalId = setInterval(checkClipboard, pollInterval);
+  };
+
+  const stop = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+      logger.info('Clipboard watcher stopped.');
+    }
+  };
+
+  start();
+  
+  return { stop };
+};
 ```
+
+These changes should resolve the issues you described. Let me know if you need anything else

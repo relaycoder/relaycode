@@ -2,7 +2,7 @@ import clipboardy from 'clipboardy';
 import { logger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
 
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
@@ -10,18 +10,34 @@ type ClipboardReader = () => Promise<string>;
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {
-  return async () => {
+  return () => new Promise((resolve) => {
     try {
       const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-      if (fs.existsSync(localExePath)) {
-        const result = execSync(`"${localExePath}" --paste`, { encoding: 'utf8' });
-        return result;
+      if (!fs.existsSync(localExePath)) {
+        logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
+        // Resolve with empty string to avoid stopping the watcher loop, but log an error.
+        return resolve('');
       }
-      throw new Error('Windows clipboard executable not found');
-    } catch (error) {
-      throw new Error(`Clipboard read failed: ${error instanceof Error ? error.message : String(error)}`);
+      
+      const command = `"${localExePath}" --paste`;
+      
+      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (error) {
+          // It's common for the clipboard executable to fail if the clipboard is empty
+          // or contains non-text data (e.g., an image). We can treat this as "no content".
+          // We don't log this as an error to avoid spamming the console during normal use.
+          logger.debug(`Windows clipboard read command failed (this is often normal): ${stderr.trim()}`);
+          resolve('');
+        } else {
+          resolve(stdout);
+        }
+      });
+    } catch (syncError) {
+      // Catch synchronous errors during setup (e.g., path issues).
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      resolve('');
     }
-  };
+  });
 };
 
 // Check if the clipboard executable exists and fix path issues on Windows

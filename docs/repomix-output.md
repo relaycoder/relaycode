@@ -270,6 +270,7 @@ export const createConfig = async (projectId: string, cwd: string = process.cwd(
         linter: 'bun tsc --noEmit',
         preCommand: '',
         postCommand: '',
+        preferredStrategy: 'auto' as const,
     };
     
     // Ensure the schema defaults are applied, including for logLevel
@@ -318,6 +319,7 @@ export const ConfigSchema = z.object({
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
+  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -394,56 +396,20 @@ import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import { CONFIG_FILE_NAME } from '../utils/constants';
 import { notifyPatchDetected } from '../utils/notifier';
+import { Config } from '../types';
 
-export const watchCommand = async (): Promise<void> => {
-  const config = await findConfig();
-
-  if (!config) {
-    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-    logger.info("Please run 'relay init' to create one.");
-    process.exit(1);
-  }
-  
-  logger.setLevel(config.logLevel);
-  logger.success('Configuration loaded. Starting relaycode watch...');
-  logger.debug(`Log level set to: ${config.logLevel}`);
-
-  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
-    logger.info('New clipboard content detected. Attempting to parse...');
-    const parsedResponse = parseLLMResponse(content);
-
-    if (!parsedResponse) {
-      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
-      return;
-    }
-    
-    notifyPatchDetected(config.projectId);
-    logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse);
-    logger.info('--------------------------------------------------');
-    logger.info('Watching for next patch...');
-  });
-};
-````
-
-## File: src/commands/init.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
-
-const getSystemPrompt = (projectId: string): string => `
-✅ relaycode has been initialized for this project.
+const getSystemPrompt = (projectId: string, preferredStrategy: Config['preferredStrategy']): string => {
+    const header = `
+✅ relaycode is watching for changes.
 
 IMPORTANT: For relaycode to work, you must configure your AI assistant.
 Copy the entire text below and paste it into your LLM's "System Prompt"
 or "Custom Instructions" section.
----------------------------------------------------------------------------
+---------------------------------------------------------------------------`;
 
-You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.
+    const intro = `You are an expert AI programmer. To modify a file, you MUST use a code block with a specified patch strategy.`;
 
+    const syntaxAuto = `
 **Syntax:**
 \`\`\`typescript // filePath {patchStrategy}
 ... content ...
@@ -457,9 +423,33 @@ You are an expert AI programmer. To modify a file, you MUST use a code block wit
 \`\`\`
 \`\`\`typescript // "src/components/My Component.tsx" new-unified
 ...
-\`\`\`
+\`\`\``;
 
----
+    const syntaxReplace = `
+**Syntax:**
+\`\`\`typescript // filePath
+... content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- Only the \`replace\` strategy is enabled. This means you must provide the ENTIRE file content for any change. This is suitable for creating new files or making changes to small files.`;
+
+    const syntaxNewUnified = `
+**Syntax:**
+\`\`\`typescript // filePath new-unified
+... diff content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- You must use the \`new-unified\` patch strategy for all modifications.`;
+
+    const syntaxMultiSearchReplace = `
+**Syntax:**
+\`\`\`typescript // filePath multi-search-replace
+... diff content ...
+\`\`\`
+- \`filePath\`: The path to the file. **If the path contains spaces, it MUST be enclosed in double quotes.**
+- You must use the \`multi-search-replace\` patch strategy for all modifications.`;
+
+    const sectionNewUnified = `---
 
 ### Strategy 1: Advanced Unified Diff (\`new-unified\`) - RECOMMENDED
 
@@ -486,8 +476,9 @@ Use for most changes, like refactoring, adding features, and fixing bugs. It's r
 +      return Math.round(total * 100) / 100;  // Round to 2 decimal places
 +    }
 \`\`\`
+`;
 
----
+    const sectionMultiSearchReplace = `---
 
 ### Strategy 2: Multi-Search-Replace (\`multi-search-replace\`)
 
@@ -505,8 +496,9 @@ Repeat this block for each replacement.
 [new content to replace with]
 >>>>>>> REPLACE
 \`\`\`
+`;
 
----
+    const otherOps = `---
 
 ### Other Operations
 
@@ -518,8 +510,9 @@ Repeat this block for each replacement.
     \`\`\`typescript // "path/to/My Old Component.ts"
     //TODO: delete this file
     \`\`\`
+`;
 
----
+    const finalSteps = `---
 
 ### Final Steps
 
@@ -534,51 +527,68 @@ Repeat this block for each replacement.
       - new: src/components/Button.tsx
       - delete: src/utils/old-helper.ts
     \`\`\`
----------------------------------------------------------------------------
-You are now ready to run 'relay watch' in your terminal.
 `;
+    
+    const footer = `---------------------------------------------------------------------------`;
 
-const updateGitignore = async (cwd: string): Promise<void> => {
-    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
-    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+    let syntax = '';
+    let strategyDetails = '';
 
-    try {
-        let content = await fs.readFile(gitignorePath, 'utf-8');
-        if (!content.includes(STATE_DIRECTORY_NAME)) {
-            content += entry;
-            await fs.writeFile(gitignorePath, content);
-            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
-        }
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            await fs.writeFile(gitignorePath, entry.trim());
-            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
-        } else {
-            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
-        }
+    switch (preferredStrategy) {
+        case 'replace':
+            syntax = syntaxReplace;
+            strategyDetails = ''; // Covered in 'otherOps'
+            break;
+        case 'new-unified':
+            syntax = syntaxNewUnified;
+            strategyDetails = sectionNewUnified;
+            break;
+        case 'multi-search-replace':
+            syntax = syntaxMultiSearchReplace;
+            strategyDetails = sectionMultiSearchReplace;
+            break;
+        case 'auto':
+        default:
+            syntax = syntaxAuto;
+            strategyDetails = `${sectionNewUnified}\n${sectionMultiSearchReplace}`;
+            break;
     }
-};
 
-export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
-    logger.info('Initializing relaycode in this project...');
+    return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
+}
 
-    const config = await findConfig(cwd);
-    if (config) {
-        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        logger.log(getSystemPrompt(config.projectId));
-        return;
+export const watchCommand = async (): Promise<void> => {
+  const config = await findConfig();
+
+  if (!config) {
+    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+    logger.info("Please run 'relay init' to create one.");
+    process.exit(1);
+  }
+  
+  logger.setLevel(config.logLevel);
+  logger.success('Configuration loaded. Starting relaycode watch...');
+  logger.debug(`Log level set to: ${config.logLevel}`);
+  logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+
+  // Display the system prompt
+  logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
+
+  createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    logger.info('New clipboard content detected. Attempting to parse...');
+    const parsedResponse = parseLLMResponse(content);
+
+    if (!parsedResponse) {
+      logger.warn('Clipboard content is not a valid relaycode patch. Ignoring.');
+      return;
     }
     
-    const projectId = await getProjectId(cwd);
-    await createConfig(projectId, cwd);
-    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
-    
-    await ensureStateDirExists(cwd);
-    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
-
-    await updateGitignore(cwd);
-
-    logger.log(getSystemPrompt(projectId));
+    notifyPatchDetected(config.projectId);
+    logger.success('Valid patch format detected. Processing...');
+    await processPatch(config, parsedResponse);
+    logger.info('--------------------------------------------------');
+    logger.info('Watching for next patch...');
+  });
 };
 ````
 
@@ -720,6 +730,82 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
     return parseInt(errorMatches[1], 10);
   }
   return exitCode === 0 ? 0 : 1;
+};
+````
+
+## File: src/commands/init.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
+import { logger } from '../utils/logger';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
+
+const getInitMessage = (projectId: string): string => `
+✅ relaycode has been initialized for this project.
+
+Configuration file created: ${CONFIG_FILE_NAME}
+
+Project ID: ${projectId}
+
+Next steps:
+1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
+   - 'auto' (default): The AI can choose the best patch strategy.
+   - 'new-unified': Forces the AI to use diffs, great for most changes.
+   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
+   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
+
+2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
+
+3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
+`;
+
+
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
+    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+
+    try {
+        let content = await fs.readFile(gitignorePath, 'utf-8');
+        if (!content.includes(STATE_DIRECTORY_NAME)) {
+            content += entry;
+            await fs.writeFile(gitignorePath, content);
+            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            await fs.writeFile(gitignorePath, entry.trim());
+            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+        } else {
+            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+};
+
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    logger.info('Initializing relaycode in this project...');
+
+    const config = await findConfig(cwd);
+    if (config) {
+        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.log(`
+To use relaycode, please run 'relay watch'.
+It will display a system prompt to copy into your LLM assistant.
+You can review your configuration in ${CONFIG_FILE_NAME}.
+`);
+        return;
+    }
+    
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
+    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
+    
+    await ensureStateDirExists(cwd);
+    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
+
+    await updateGitignore(cwd);
+
+    logger.log(getInitMessage(projectId));
 };
 ````
 
@@ -1439,7 +1525,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 ````json
 {
   "name": "relaycode",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "A developer assistant that automates applying code changes from LLMs.",
   "type": "module",
   "main": "./dist/index.js",
