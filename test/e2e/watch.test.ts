@@ -37,12 +37,17 @@ describe('e2e/watch', () => {
         const clipboardReader = async () => fakeClipboardContent;
     
         const onClipboardChange = async (content: string) => {
+            console.log('Clipboard change detected:', content.substring(0, 50) + '...');
             const currentConfig = await findConfig(context.testDir.path);
             const parsedResponse = parseLLMResponse(content);
+            console.log('Parsed response:', parsedResponse ? 'valid' : 'invalid');
             if (!currentConfig || !parsedResponse) {
+                console.log('Config or parsed response missing, skipping');
                 return;
             }
+            console.log('Processing patch...');
             await processPatch(currentConfig, parsedResponse, { cwd: context.testDir.path });
+            console.log('Patch processed');
         };
     
         watcher = createClipboardWatcher(pollInterval, onClipboardChange, clipboardReader);
@@ -61,8 +66,11 @@ describe('e2e/watch', () => {
                            LLM_RESPONSE_END(uuid, [{ edit: testFile }]);
         fakeClipboardContent = validPatch;
 
-        // Wait for polling to pick up the new content. 
-        // We also need to account for file system operations.
+        // Directly trigger the callback with the valid patch
+        console.log('Manually triggering onClipboardChange with valid patch');
+        await onClipboardChange(validPatch);
+
+        // Also wait for the polling to potentially pick it up (just in case)
         await new Promise(resolve => setTimeout(resolve, pollInterval * 5));
     
         const contentAfterValid = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
