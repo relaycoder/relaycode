@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { watchCommand } from './commands/watch';
 import { logCommand } from './commands/log';
+import { undoCommand } from './commands/undo';
 import { revertCommand } from './commands/revert';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +77,11 @@ program
   .command('log')
   .description('Displays a log of all committed transactions.')
   .action(logCommand);
+
+program
+  .command('undo')
+  .description('Reverts the last successfully committed transaction.')
+  .action(undoCommand);
 
 program
   .command('revert')

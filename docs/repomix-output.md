@@ -4,6 +4,8 @@ package.json
 relaycode.config.json
 src/cli.ts
 src/commands/init.ts
+src/commands/log.ts
+src/commands/revert.ts
 src/commands/watch.ts
 src/core/clipboard.ts
 src/core/config.ts
@@ -22,6 +24,180 @@ tsconfig.json
 ```
 
 # Files
+
+## File: src/commands/log.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { logger } from '../utils/logger';
+import { StateFile, StateFileSchema, FileOperation } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+const opToString = (op: FileOperation): string => {
+    switch (op.type) {
+        case 'write': return `write: ${op.path}`;
+        case 'delete': return `delete: ${op.path}`;
+        case 'rename': return `rename: ${op.from} -> ${op.to}`;
+    }
+};
+
+export const logCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
+        logger.warn(`State directory '${STATE_DIRECTORY_NAME}' not found. No logs to display.`);
+        logger.info("Run 'relay init' to initialize the project.");
+        return;
+    }
+
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+
+    if (transactionFiles.length === 0) {
+        logger.info('No committed transactions found.');
+        return;
+    }
+
+    const transactions: StateFile[] = [];
+    for (const file of transactionFiles) {
+        try {
+            const filePath = path.join(stateDir, file);
+            const content = await fs.readFile(filePath, 'utf-8');
+            const data = yaml.load(content);
+            const stateFile = StateFileSchema.parse(data);
+            transactions.push(stateFile);
+        } catch (error) {
+            logger.warn(`Could not parse state file ${file}. Skipping. Error: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    logger.log('Committed Transactions (most recent first):');
+    logger.log('-------------------------------------------');
+
+    if (transactions.length === 0) {
+        logger.info('No valid transactions found.');
+        return;
+    }
+
+    transactions.forEach(tx => {
+        logger.info(`- UUID: ${tx.uuid}`);
+        logger.log(`  Date: ${new Date(tx.createdAt).toLocaleString()}`);
+        if (tx.reasoning && tx.reasoning.length > 0) {
+            logger.log('  Reasoning:');
+            tx.reasoning.forEach(r => logger.log(`    - ${r}`));
+        }
+        if (tx.operations && tx.operations.length > 0) {
+            logger.log('  Changes:');
+            tx.operations.forEach(op => logger.log(`    - ${opToString(op)}`));
+        }
+        logger.log(''); // Newline for spacing
+    });
+};
+````
+
+## File: src/commands/revert.ts
+````typescript
+import { findConfig } from '../core/config';
+import { readStateFile } from '../core/state';
+import { processPatch } from '../core/transaction';
+import { logger } from '../utils/logger';
+import { FileOperation, ParsedLLMResponse } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import { CONFIG_FILE_NAME } from '../utils/constants';
+
+export const revertCommand = async (uuidToRevert: string): Promise<void> => {
+    const cwd = process.cwd();
+
+    // 1. Load config
+    const config = await findConfig(cwd);
+    if (!config) {
+        logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+        logger.info("Please run 'relay init' to create one.");
+        process.exit(1);
+    }
+
+    // 2. Load the state file for the transaction to revert
+    logger.info(`Attempting to revert transaction: ${uuidToRevert}`);
+    const stateToRevert = await readStateFile(cwd, uuidToRevert);
+    if (!stateToRevert) {
+        logger.error(`Transaction with UUID '${uuidToRevert}' not found or is invalid.`);
+        return;
+    }
+
+    // 3. Generate inverse operations
+    const inverse_operations: FileOperation[] = [];
+    // Process operations in reverse order to handle dependencies correctly
+    for (const op of [...stateToRevert.operations].reverse()) {
+        switch (op.type) {
+            case 'rename':
+                inverse_operations.push({ type: 'rename', from: op.to, to: op.from });
+                break;
+            case 'delete':
+                const deletedContent = stateToRevert.snapshot[op.path];
+                if (deletedContent === null || typeof deletedContent === 'undefined') {
+                    logger.warn(`Cannot revert deletion of ${op.path}, original content not found in snapshot. Skipping.`);
+                    continue;
+                }
+                inverse_operations.push({
+                    type: 'write',
+                    path: op.path,
+                    content: deletedContent,
+                    patchStrategy: 'replace',
+                });
+                break;
+            case 'write':
+                const originalContent = stateToRevert.snapshot[op.path];
+                if (typeof originalContent === 'undefined') {
+                    logger.warn(`Cannot find original state for ${op.path} in snapshot. Skipping revert for this operation.`);
+                    continue;
+                }
+                if (originalContent === null) {
+                    // This was a new file. The inverse is to delete it.
+                    inverse_operations.push({ type: 'delete', path: op.path });
+                } else {
+                    // This was a file modification. The inverse is to restore original content.
+                    inverse_operations.push({
+                        type: 'write',
+                        path: op.path,
+                        content: originalContent,
+                        patchStrategy: 'replace',
+                    });
+                }
+                break;
+        }
+    }
+
+    if (inverse_operations.length === 0) {
+        logger.warn('No operations to revert for this transaction.');
+        return;
+    }
+
+    // 4. Create and process a new "revert" transaction
+    const newUuid = uuidv4();
+    const reasoning = [
+        `Reverting transaction ${uuidToRevert}.`,
+        `Reasoning from original transaction: ${stateToRevert.reasoning.join(' ')}`
+    ];
+
+    const parsedResponse: ParsedLLMResponse = {
+        control: {
+            projectId: config.projectId,
+            uuid: newUuid,
+        },
+        operations: inverse_operations,
+        reasoning,
+    };
+
+    logger.info(`Creating new transaction ${newUuid} to perform the revert.`);
+    await processPatch(config, parsedResponse, { cwd });
+};
+````
 
 ## File: src/utils/constants.ts
 ````typescript
@@ -115,37 +291,6 @@ export const getConfirmation = (question: string): Promise<boolean> => {
 };
 ````
 
-## File: src/index.ts
-````typescript
-// Core logic
-export { createClipboardWatcher } from './core/clipboard';
-export { findConfig, createConfig, getProjectId, ensureStateDirExists } from './core/config';
-export { 
-    applyOperations, 
-    createSnapshot, 
-    deleteFile, 
-    readFileContent, 
-    restoreSnapshot, 
-    writeFileContent 
-} from './core/executor';
-export { parseLLMResponse } from './core/parser';
-export { 
-    commitState,
-    deletePendingState,
-    hasBeenProcessed,
-    writePendingState
-} from './core/state';
-export { processPatch } from './core/transaction';
-
-// Types
-export * from './types';
-
-// Utils
-export { executeShellCommand, getErrorCount } from './utils/shell';
-export { logger } from './utils/logger';
-export { getConfirmation } from './utils/prompt';
-````
-
 ## File: src/utils/logger.ts
 ````typescript
 import chalk from 'chalk';
@@ -207,6 +352,38 @@ export const logger = {
 };
 ````
 
+## File: src/index.ts
+````typescript
+// Core logic
+export { createClipboardWatcher } from './core/clipboard';
+export { findConfig, createConfig, getProjectId, ensureStateDirExists } from './core/config';
+export { 
+    applyOperations, 
+    createSnapshot, 
+    deleteFile, 
+    readFileContent, 
+    restoreSnapshot, 
+    writeFileContent 
+} from './core/executor';
+export { parseLLMResponse } from './core/parser';
+export { 
+    commitState,
+    deletePendingState,
+    hasBeenProcessed,
+    readStateFile,
+    writePendingState
+} from './core/state';
+export { processPatch } from './core/transaction';
+
+// Types
+export * from './types';
+
+// Utils
+export { executeShellCommand, getErrorCount } from './utils/shell';
+export { logger } from './utils/logger';
+export { getConfirmation } from './utils/prompt';
+````
+
 ## File: relaycode.config.json
 ````json
 {
@@ -219,87 +396,6 @@ export const logger = {
   "preCommand": "",
   "postCommand": "",
   "preferredStrategy": "new-unified"
-}
-````
-
-## File: src/cli.ts
-````typescript
-#!/usr/bin/env node
-import { Command } from 'commander';
-import { initCommand } from './commands/init';
-import { watchCommand } from './commands/watch';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import fs from 'node:fs';
-
-// Default version in case we can't find the package.json
-let version = '0.0.0';
-
-try {
-  // Try multiple strategies to find the package.json
-  const require = createRequire(import.meta.url);
-  let pkg;
-  
-  // Strategy 1: Try to find package.json relative to the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  
-  // Try different possible locations
-  const possiblePaths = [
-    join(__dirname, 'package.json'),
-    join(__dirname, '..', 'package.json'),
-    join(__dirname, '..', '..', 'package.json'),
-    resolve(process.cwd(), 'package.json')
-  ];
-  
-  let foundPath = null;
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      foundPath = path;
-      pkg = require(path);
-      break;
-    }
-  }
-  
-  // Strategy 2: If we still don't have it, try to get it from the npm package name
-  if (!pkg) {
-    try {
-      pkg = require('relaycode/package.json');
-    } catch (e) {
-      // Ignore this error
-    }
-  }
-  
-  if (pkg && pkg.version) {
-    version = pkg.version;
-  }
-} catch (error) {
-  // Fallback to default version if we can't find the package.json
-  console.error('Warning: Could not determine package version', error);
-}
-
-const program = new Command();
-
-program
-  .name('relay')
-  .version(version)
-  .description('A developer assistant that automates applying code changes from LLMs.');
-
-program
-  .command('init')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
-
-program
-  .command('watch')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(watchCommand);
-
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
 }
 ````
 
@@ -369,87 +465,98 @@ export const getProjectId = async (cwd: string = process.cwd()): Promise<string>
 };
 ````
 
-## File: src/core/state.ts
+## File: src/cli.ts
 ````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import yaml from 'js-yaml';
-import { StateFile, StateFileSchema } from '../types';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { watchCommand } from './commands/watch';
+import { logCommand } from './commands/log';
+import { revertCommand } from './commands/revert';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import fs from 'node:fs';
 
-const stateDirectoryCache = new Map<string, boolean>();
+// Default version in case we can't find the package.json
+let version = '0.0.0';
 
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
-
-const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd), fileName);
-};
-
-// Ensure state directory exists with caching for performance
-const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = getStateDirectory(cwd);
-  if (!stateDirectoryCache.has(dirPath)) {
-    await fs.mkdir(dirPath, { recursive: true });
-    stateDirectoryCache.set(dirPath, true);
-  }
-};
-
-export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  try {
-    // Only check for a committed state file.
-    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-    await fs.access(committedPath);
-    return true;
-  } catch (e) {
-    return false;
-  }
-};
-
-export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
-  const validatedState = StateFileSchema.parse(state);
-  const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(cwd, state.uuid, true);
+try {
+  // Try multiple strategies to find the package.json
+  const require = createRequire(import.meta.url);
+  let pkg;
   
-  // Ensure directory exists (cached)
-  await ensureStateDirectory(cwd);
+  // Strategy 1: Try to find package.json relative to the current file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
   
-  // Write file
-  await fs.writeFile(filePath, yamlString, 'utf-8');
-};
-
-export const commitState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  const committedPath = getStateFilePath(cwd, uuid, false);
-
-  try {
-    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
-    await fs.rename(pendingPath, committedPath);
-  } catch (error) {
-    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
-    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-      await fs.copyFile(pendingPath, committedPath);
-      await fs.unlink(pendingPath);
-    } else {
-      // Re-throw other errors
-      throw error;
+  // Try different possible locations
+  const possiblePaths = [
+    join(__dirname, 'package.json'),
+    join(__dirname, '..', 'package.json'),
+    join(__dirname, '..', '..', 'package.json'),
+    resolve(process.cwd(), 'package.json')
+  ];
+  
+  let foundPath = null;
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      foundPath = path;
+      pkg = require(path);
+      break;
     }
   }
-};
-
-export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  try {
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      // Already gone, that's fine.
-      return;
+  
+  // Strategy 2: If we still don't have it, try to get it from the npm package name
+  if (!pkg) {
+    try {
+      pkg = require('relaycode/package.json');
+    } catch (e) {
+      // Ignore this error
     }
-    throw error;
   }
-};
+  
+  if (pkg && pkg.version) {
+    version = pkg.version;
+  }
+} catch (error) {
+  // Fallback to default version if we can't find the package.json
+  console.error('Warning: Could not determine package version', error);
+}
+
+const program = new Command();
+
+program
+  .name('relay')
+  .version(version)
+  .description('A developer assistant that automates applying code changes from LLMs.');
+
+program
+  .command('init')
+  .description('Initializes relaycode in the current project.')
+  .action(() => initCommand());
+
+program
+  .command('watch')
+  .description('Starts watching the clipboard for code changes to apply.')
+  .action(watchCommand);
+
+program
+  .command('log')
+  .description('Displays a log of all committed transactions.')
+  .action(logCommand);
+
+program
+  .command('revert')
+  .description('Reverts a committed transaction by its UUID.')
+  .argument('<uuid>', 'The UUID of the transaction to revert.')
+  .action(revertCommand);
+
+program.parse(process.argv);
+
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
+}
 ````
 
 ## File: src/types.ts
@@ -673,6 +780,102 @@ You can review your configuration in ${CONFIG_FILE_NAME}.
     await updateGitignore(cwd);
 
     logger.log(getInitMessage(projectId));
+};
+````
+
+## File: src/core/state.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { StateFile, StateFileSchema } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+
+const stateDirectoryCache = new Map<string, boolean>();
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd), fileName);
+};
+
+// Ensure state directory exists with caching for performance
+const ensureStateDirectory = async (cwd: string): Promise<void> => {
+  const dirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    stateDirectoryCache.set(dirPath, true);
+  }
+};
+
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    // Only check for a committed state file.
+    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+    await fs.access(committedPath);
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
+  const validatedState = StateFileSchema.parse(state);
+  const yamlString = yaml.dump(validatedState);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  
+  // Ensure directory exists (cached)
+  await ensureStateDirectory(cwd);
+  
+  // Write file
+  await fs.writeFile(filePath, yamlString, 'utf-8');
+};
+
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
+
+  try {
+    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
+    await fs.rename(pendingPath, committedPath);
+  } catch (error) {
+    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(pendingPath, committedPath);
+      await fs.unlink(pendingPath);
+    } else {
+      // Re-throw other errors
+      throw error;
+    }
+  }
+};
+
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  try {
+    await fs.unlink(pendingPath);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      // Already gone, that's fine.
+      return;
+    }
+    throw error;
+  }
+};
+
+export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    const fileContent = await fs.readFile(committedPath, 'utf-8');
+    const yamlContent = yaml.load(fileContent);
+    return StateFileSchema.parse(yamlContent);
+  } catch (error) {
+    // Can be file not found, YAML parsing error, or Zod validation error.
+    // In any case, we can't get the state file.
+    return null;
+  }
 };
 ````
 
