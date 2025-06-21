@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { Config, PatchStrategy } from '../src/types';
 import { CONFIG_FILE_NAME } from '../src/utils/constants';
+import { logger } from '../src/utils/logger';
 
 export interface TestDir {
     path: string;
@@ -34,32 +35,32 @@ export const setupE2ETest = async (options: { withTsconfig?: boolean } = {}): Pr
         }, null, 2));
     }
     
-    // Suppress console output
-    const originalConsole = {
-        info: global.console.info,
-        log: global.console.log,
-        warn: global.console.warn,
-        error: global.console.error,
-        success: (global.console as any).success,
-        prompt: (global.console as any).prompt,
+    // Suppress logger output
+    const originalLogger = {
+        info: (logger as any).info,
+        log: (logger as any).log,
+        warn: (logger as any).warn,
+        error: (logger as any).error,
+        success: (logger as any).success,
+        prompt: (logger as any).prompt,
     };
     
-    global.console.info = () => {};
-    global.console.log = () => {};
-    global.console.warn = () => {};
-    global.console.error = () => {};
-    if ((global.console as any).success) (global.console as any).success = () => {};
-    if ((global.console as any).prompt) (global.console as any).prompt = () => {};
+    (logger as any).info = () => {};
+    (logger as any).log = () => {};
+    (logger as any).warn = () => {};
+    (logger as any).error = () => {};
+    if ((logger as any).success) (logger as any).success = () => {};
+    if ((logger as any).prompt) (logger as any).prompt = () => {};
 
 
     const cleanup = async () => {
-        // Restore console
-        global.console.info = originalConsole.info;
-        global.console.log = originalConsole.log;
-        global.console.warn = originalConsole.warn;
-        global.console.error = originalConsole.error;
-        if (originalConsole.success) (global.console as any).success = originalConsole.success;
-        if (originalConsole.prompt) (global.console as any).prompt = originalConsole.prompt;
+        // Restore logger
+        (logger as any).info = originalLogger.info;
+        (logger as any).log = originalLogger.log;
+        (logger as any).warn = originalLogger.warn;
+        (logger as any).error = originalLogger.error;
+        if (originalLogger.success) (logger as any).success = originalLogger.success;
+        if (originalLogger.prompt) (logger as any).prompt = originalLogger.prompt;
         
         // Give fs operations time to complete before cleanup
         await new Promise(resolve => setTimeout(resolve, 150));

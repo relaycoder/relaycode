@@ -22,7 +22,7 @@
     }
   },
   "include": [
-      //  "test"
+       "test"
   ],
   "ignore": {
     "useGitignore": true,

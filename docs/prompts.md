@@ -277,3 +277,13 @@ so now, the relay init only show instructions and guides to adjust config.json t
 ______________________________________
 
 while relay watch is running, user modifying config will trigger refresh on relay watch
+
+___________________________________________
+
+add test cases about below features to verify implementation
+
+- relay undo
+- relay apply
+- relay log
+- relay revert
+

@@ -2,10 +2,10 @@
   "projectId": "relaycode",
   "logLevel": "info",
   "clipboardPollInterval": 2000,
-  "approval": "no",
+  "approval": "yes",
   "approvalOnErrorCount": 0,
   "linter": "bun tsc -b --noEmit",
   "preCommand": "",
   "postCommand": "",
-  "preferredStrategy": "auto"
+  "preferredStrategy": "replace"
 }
