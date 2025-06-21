@@ -1,21 +1,14 @@
-import { findConfig } from '../core/config';
+import { loadConfigOrExit } from '../core/config';
 import { readStateFile } from '../core/state';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import { FileOperation, ParsedLLMResponse } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { CONFIG_FILE_NAME } from '../utils/constants';
 
 export const revertCommand = async (uuidToRevert: string): Promise<void> => {
     const cwd = process.cwd();
 
-    // 1. Load config
-    const config = await findConfig(cwd);
-    if (!config) {
-        logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-        logger.info("Please run 'relay init' to create one.");
-        process.exit(1);
-    }
+    const config = await loadConfigOrExit(cwd);
 
     // 2. Load the state file for the transaction to revert
     logger.info(`Attempting to revert transaction: ${uuidToRevert}`);

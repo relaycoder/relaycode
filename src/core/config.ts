@@ -3,6 +3,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { Config, ConfigSchema } from '../types';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
+import { logger } from '../utils/logger';
 
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
   const configPath = path.join(cwd, CONFIG_FILE_NAME);
@@ -19,6 +20,16 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
     }
     throw error;
   }
+};
+
+export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Config> => {
+    const config = await findConfig(cwd);
+    if (!config) {
+        logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
+        logger.info("Please run 'relay init' to create one.");
+        process.exit(1);
+    }
+    return config;
 };
 
 export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {

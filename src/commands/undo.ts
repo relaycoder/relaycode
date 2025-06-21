@@ -2,58 +2,14 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { readStateFile } from '../core/state';
+import { findLatestStateFile } from '../core/state';
 import { restoreSnapshot } from '../core/executor';
 import { getConfirmation } from '../utils/prompt';
-import { StateFile } from '../types';
-
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
-
-// This function will find the most recent transaction file
-const findLatestTransaction = async (cwd: string): Promise<StateFile | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
-        return null; // No state directory, so no transactions
-    }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
-    if (transactionFiles.length === 0) {
-        return null;
-    }
-
-    const transactions: StateFile[] = [];
-    for (const file of transactionFiles) {
-        try {
-            // readStateFile expects a UUID, which is the filename without extension
-            const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
-            if (stateFile) {
-                transactions.push(stateFile);
-            }
-        } catch (error) {
-            // Ignore files that can't be parsed, readStateFile should return null but defensive
-            logger.debug(`Could not read or parse state file ${file}: ${error}`);
-        }
-    }
-
-    if (transactions.length === 0) {
-        return null;
-    }
-
-    // Sort by createdAt date, descending (most recent first)
-    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    return transactions[0] || null;
-};
-
 
 export const undoCommand = async (cwd: string = process.cwd()): Promise<void> => {
     logger.info('Attempting to undo the last transaction...');
 
-    const latestTransaction = await findLatestTransaction(cwd);
+    const latestTransaction = await findLatestStateFile(cwd);
 
     if (!latestTransaction) {
         logger.warn('No committed transactions found to undo.');
@@ -82,7 +38,7 @@ export const undoCommand = async (cwd: string = process.cwd()): Promise<void> =>
         await restoreSnapshot(latestTransaction.snapshot, cwd);
         logger.success('  - Successfully restored file snapshot.');
 
-        const stateDir = getStateDirectory(cwd);
+        const stateDir = path.resolve(cwd, STATE_DIRECTORY_NAME);
         const undoneDir = path.join(stateDir, 'undone');
         await fs.mkdir(undoneDir, { recursive: true });
 

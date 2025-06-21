@@ -3,6 +3,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
+import { logger } from '../utils/logger';
 
 const stateDirectoryCache = new Map<string, boolean>();
 
@@ -89,4 +90,38 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
     // In any case, we can't get the state file.
     return null;
   }
+};
+
+export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
+        return null; // No state directory, so no transactions
+    }
+
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+
+    const promises = transactionFiles.map(async (file) => {
+        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
+        if (!stateFile) {
+            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
+        }
+        return stateFile;
+    });
+
+    const results = await Promise.all(promises);
+    return results.filter((sf): sf is StateFile => !!sf);
+}
+
+export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
+    const transactions = await readAllStateFiles(cwd);
+    if (!transactions || transactions.length === 0) {
+        return null;
+    }
+
+    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return transactions[0] || null;
 };

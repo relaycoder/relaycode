@@ -971,6 +971,147 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
 }
 ````
 
+## File: src/core/clipboard.ts
+````typescript
+import clipboardy from 'clipboardy';
+import { logger } from '../utils/logger';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
+
+type ClipboardCallback = (content: string) => void;
+type ClipboardReader = () => Promise<string>;
+
+
+// Direct Windows clipboard reader that uses the executable directly
+const createDirectWindowsClipboardReader = (): ClipboardReader => {
+  return () => new Promise((resolve) => {
+    try {
+      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
+      if (!fs.existsSync(localExePath)) {
+        logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
+        // Resolve with empty string to avoid stopping the watcher loop, but log an error.
+        return resolve('');
+      }
+      
+      const command = `"${localExePath}" --paste`;
+      
+      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (error) {
+          // It's common for the clipboard executable to fail if the clipboard is empty
+          // or contains non-text data (e.g., an image). We can treat this as "no content".
+          // We don't log this as an error to avoid spamming the console during normal use.
+          logger.debug(`Windows clipboard read command failed (this is often normal): ${stderr.trim()}`);
+          resolve('');
+        } else {
+          resolve(stdout);
+        }
+      });
+    } catch (syncError) {
+      // Catch synchronous errors during setup (e.g., path issues).
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      resolve('');
+    }
+  });
+};
+
+// Check if the clipboard executable exists and fix path issues on Windows
+const ensureClipboardExecutable = () => {
+  if (process.platform === 'win32') {
+    try {
+      // Try to find clipboard executables in common locations
+      const possiblePaths = [
+        // Global installation path
+        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
+        // Local installation paths
+        path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
+        path.join(process.cwd(), 'fallbacks', 'windows')
+      ];
+      
+      // Create fallbacks directory in the current project if it doesn't exist
+      const localFallbacksDir = path.join(process.cwd(), 'fallbacks', 'windows');
+      if (!fs.existsSync(localFallbacksDir)) {
+        fs.mkdirSync(localFallbacksDir, { recursive: true });
+      }
+      
+      // Find an existing executable
+      let sourceExePath = null;
+      for (const dir of possiblePaths) {
+        const exePath = path.join(dir, 'clipboard_x86_64.exe');
+        if (fs.existsSync(exePath)) {
+          sourceExePath = exePath;
+          break;
+        }
+      }
+      
+      // Copy the executable to the local fallbacks directory if found
+      if (sourceExePath && sourceExePath !== path.join(localFallbacksDir, 'clipboard_x86_64.exe')) {
+        fs.copyFileSync(sourceExePath, path.join(localFallbacksDir, 'clipboard_x86_64.exe'));
+        logger.info('Copied Windows clipboard executable to local fallbacks directory');
+      } else if (!sourceExePath) {
+        logger.error('Windows clipboard executable not found in any location');
+      }
+    } catch (error) {
+      logger.warn('Error ensuring clipboard executable: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+};
+
+export const createClipboardWatcher = (
+  pollInterval: number,
+  callback: ClipboardCallback,
+  reader?: ClipboardReader,
+) => {
+  // Ensure clipboard executable exists before starting
+  ensureClipboardExecutable();
+  
+  // On Windows, use the direct Windows reader
+  // Otherwise use the provided reader or clipboardy
+  const clipboardReader = process.platform === 'win32' ? 
+    createDirectWindowsClipboardReader() : 
+    reader || clipboardy.read;
+  
+  let lastContent = '';
+  let intervalId: NodeJS.Timeout | null = null;
+
+  const checkClipboard = async () => {
+    try {
+      const content = await clipboardReader();
+      if (content && content !== lastContent) {
+        lastContent = content;
+        callback(content);
+      }
+    } catch (error) {
+      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
+      // So we log a warning but don't stop the watcher.
+      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const start = () => {
+    if (intervalId) {
+      return;
+    }
+    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
+    // Immediately check once, then start the interval
+    checkClipboard();
+    intervalId = setInterval(checkClipboard, pollInterval);
+  };
+
+  const stop = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+      logger.info('Clipboard watcher stopped.');
+    }
+  };
+
+  start();
+  
+  return { stop };
+};
+````
+
 ## File: src/commands/watch.ts
 ````typescript
 import { findConfig } from '../core/config';
@@ -1176,8 +1317,14 @@ export const watchCommand = async (): Promise<void> => {
         return;
       }
 
+      // Check project ID before notifying and processing.
+      if (parsedResponse.control.projectId !== config.projectId) {
+        logger.debug(`Ignoring patch for different project (expected '${config.projectId}', got '${parsedResponse.control.projectId}').`);
+        return;
+      }
+
       notifyPatchDetected(config.projectId);
-      logger.success('Valid patch format detected. Processing...');
+      logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
       await processPatch(config, parsedResponse);
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');
@@ -1219,147 +1366,6 @@ export const watchCommand = async (): Promise<void> => {
 
   // Watch for changes after initial setup
   fs.watch(configPath, handleConfigChange);
-};
-````
-
-## File: src/core/clipboard.ts
-````typescript
-import clipboardy from 'clipboardy';
-import { logger } from '../utils/logger';
-import fs from 'fs';
-import path from 'path';
-import { exec } from 'child_process';
-
-type ClipboardCallback = (content: string) => void;
-type ClipboardReader = () => Promise<string>;
-
-
-// Direct Windows clipboard reader that uses the executable directly
-const createDirectWindowsClipboardReader = (): ClipboardReader => {
-  return () => new Promise((resolve) => {
-    try {
-      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-      if (!fs.existsSync(localExePath)) {
-        logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
-        // Resolve with empty string to avoid stopping the watcher loop, but log an error.
-        return resolve('');
-      }
-      
-      const command = `"${localExePath}" --paste`;
-      
-      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
-        if (error) {
-          // It's common for the clipboard executable to fail if the clipboard is empty
-          // or contains non-text data (e.g., an image). We can treat this as "no content".
-          // We don't log this as an error to avoid spamming the console during normal use.
-          logger.debug(`Windows clipboard read command failed (this is often normal): ${stderr.trim()}`);
-          resolve('');
-        } else {
-          resolve(stdout);
-        }
-      });
-    } catch (syncError) {
-      // Catch synchronous errors during setup (e.g., path issues).
-      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
-      resolve('');
-    }
-  });
-};
-
-// Check if the clipboard executable exists and fix path issues on Windows
-const ensureClipboardExecutable = () => {
-  if (process.platform === 'win32') {
-    try {
-      // Try to find clipboard executables in common locations
-      const possiblePaths = [
-        // Global installation path
-        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
-        // Local installation paths
-        path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
-        path.join(process.cwd(), 'fallbacks', 'windows')
-      ];
-      
-      // Create fallbacks directory in the current project if it doesn't exist
-      const localFallbacksDir = path.join(process.cwd(), 'fallbacks', 'windows');
-      if (!fs.existsSync(localFallbacksDir)) {
-        fs.mkdirSync(localFallbacksDir, { recursive: true });
-      }
-      
-      // Find an existing executable
-      let sourceExePath = null;
-      for (const dir of possiblePaths) {
-        const exePath = path.join(dir, 'clipboard_x86_64.exe');
-        if (fs.existsSync(exePath)) {
-          sourceExePath = exePath;
-          break;
-        }
-      }
-      
-      // Copy the executable to the local fallbacks directory if found
-      if (sourceExePath && sourceExePath !== path.join(localFallbacksDir, 'clipboard_x86_64.exe')) {
-        fs.copyFileSync(sourceExePath, path.join(localFallbacksDir, 'clipboard_x86_64.exe'));
-        logger.info('Copied Windows clipboard executable to local fallbacks directory');
-      } else if (!sourceExePath) {
-        logger.error('Windows clipboard executable not found in any location');
-      }
-    } catch (error) {
-      logger.warn('Error ensuring clipboard executable: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  }
-};
-
-export const createClipboardWatcher = (
-  pollInterval: number,
-  callback: ClipboardCallback,
-  reader?: ClipboardReader,
-) => {
-  // Ensure clipboard executable exists before starting
-  ensureClipboardExecutable();
-  
-  // On Windows, use the direct Windows reader
-  // Otherwise use the provided reader or clipboardy
-  const clipboardReader = process.platform === 'win32' ? 
-    createDirectWindowsClipboardReader() : 
-    reader || clipboardy.read;
-  
-  let lastContent = '';
-  let intervalId: NodeJS.Timeout | null = null;
-
-  const checkClipboard = async () => {
-    try {
-      const content = await clipboardReader();
-      if (content && content !== lastContent) {
-        lastContent = content;
-        callback(content);
-      }
-    } catch (error) {
-      // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
-      // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  };
-
-  const start = () => {
-    if (intervalId) {
-      return;
-    }
-    logger.info(`Starting clipboard watcher (polling every ${pollInterval}ms)`);
-    // Immediately check once, then start the interval
-    checkClipboard();
-    intervalId = setInterval(checkClipboard, pollInterval);
-  };
-
-  const stop = () => {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      logger.info('Clipboard watcher stopped.');
-    }
-  };
-
-  start();
-  
-  return { stop };
 };
 ````
 
@@ -1431,32 +1437,38 @@ program
 
 program
   .command('init')
+  .alias('i')
   .description('Initializes relaycode in the current project.')
   .action(() => initCommand());
 
 program
   .command('watch')
+  .alias('w')
   .description('Starts watching the clipboard for code changes to apply.')
   .action(watchCommand);
 
 program
   .command('apply')
+  .alias('a')
   .description('Applies a patch from a specified file.')
   .argument('<filePath>', 'The path to the file containing the patch.')
   .action(applyCommand);
 
 program
   .command('log')
+  .alias('l')
   .description('Displays a log of all committed transactions.')
   .action(() => logCommand());
 
 program
   .command('undo')
+  .alias('u')
   .description('Reverts the last successfully committed transaction.')
   .action(() => undoCommand());
 
 program
   .command('revert')
+  .alias('r')
   .description('Reverts a committed transaction by its UUID.')
   .argument('<uuid>', 'The UUID of the transaction to revert.')
   .action(revertCommand);
@@ -1949,17 +1961,13 @@ const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, c
 const logCompletionSummary = (
     uuid: string,
     startTime: number,
-    operations: FileOperation[],
-    opStats: Array<{ added: number; removed: number }>
+    operations: FileOperation[]
 ) => {
     const duration = performance.now() - startTime;
-    const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
-    const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
 
     logger.log('\nSummary:');
     logger.log(`Applied ${operations.length} file operation(s) successfully.`);
-    logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
-    logger.log(`Completed in ${duration.toFixed(2)}ms`);
+    logger.log(`Total time from start to commit: ${duration.toFixed(2)}ms`);
     logger.success(`✅ Transaction ${uuid} committed successfully!`);
 };
 
@@ -2060,25 +2068,40 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             }
         }
 
+        // Log summary before asking for approval
+        const checksDuration = performance.now() - startTime;
+        const totalAdded = opStats.reduce((sum, s) => sum + s.added, 0);
+        const totalRemoved = opStats.reduce((sum, s) => sum + s.removed, 0);
+
+        logger.log('\nPre-flight summary:');
+        logger.success(`Lines changed: +${totalAdded}, -${totalRemoved}`);
+        logger.log(`Checks completed in ${checksDuration.toFixed(2)}ms`);
+
         // Check for approval
         const finalErrorCount = await getErrorCount(config.linter, cwd);
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
-        const canAutoApprove = config.approval === 'yes' && finalErrorCount <= config.approvalOnErrorCount;
         
         let isApproved: boolean;
-        if (canAutoApprove) {
-            logger.success('  - Changes automatically approved based on your configuration.');
+        if (config.approval === 'no') {
+            logger.warn('  - Bypassing approval step because "approval" is set to "no". Committing changes directly.');
             isApproved = true;
-        } else {
-            notifyApprovalRequired(config.projectId);
-            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        } else { // config.approval === 'yes'
+            const canAutoApprove = finalErrorCount <= config.approvalOnErrorCount;
+
+            if (canAutoApprove) {
+                logger.success('  - Changes automatically approved based on your configuration.');
+                isApproved = true;
+            } else {
+                notifyApprovalRequired(config.projectId);
+                isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+            }
         }
 
         if (isApproved) {
             stateFile.approved = true;
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
-            logCompletionSummary(uuid, startTime, operations, opStats);
+            logCompletionSummary(uuid, startTime, operations);
             notifySuccess(uuid);
         } else {
             throw new Error('Changes were not approved.');

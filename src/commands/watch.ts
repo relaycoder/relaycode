@@ -1,4 +1,4 @@
-import { findConfig } from '../core/config';
+import { findConfig, loadConfigOrExit } from '../core/config';
 import { createClipboardWatcher } from '../core/clipboard';
 import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
@@ -238,13 +238,7 @@ export const watchCommand = async (): Promise<void> => {
   };
 
   // Initial startup
-  const initialConfig = await findConfig();
-  if (!initialConfig) {
-    logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-    logger.info("Please run 'relay init' to create one.");
-    process.exit(1);
-  }
-
+  const initialConfig = await loadConfigOrExit();
   logger.success('Configuration loaded. Starting relaycode watch...');
   startServices(initialConfig);
 

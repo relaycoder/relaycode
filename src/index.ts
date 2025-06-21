@@ -1,6 +1,6 @@
 // Core logic
 export { createClipboardWatcher } from './core/clipboard';
-export { findConfig, createConfig, getProjectId, ensureStateDirExists } from './core/config';
+export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit } from './core/config';
 export { 
     applyOperations, 
     createSnapshot, 
@@ -14,7 +14,9 @@ export {
     commitState,
     deletePendingState,
     hasBeenProcessed,
+    findLatestStateFile,
     readStateFile,
+    readAllStateFiles,
     writePendingState
 } from './core/state';
 export { processPatch } from './core/transaction';
