@@ -218,7 +218,7 @@ export const logger = {
   "linter": "bun tsc -b --noEmit",
   "preCommand": "",
   "postCommand": "",
-  "preferredStrategy": "multi-search-replace"
+  "preferredStrategy": "new-unified"
 }
 ````
 
@@ -369,91 +369,6 @@ export const getProjectId = async (cwd: string = process.cwd()): Promise<string>
 };
 ````
 
-## File: src/types.ts
-````typescript
-import { z } from 'zod';
-
-export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'debug']).default('info');
-export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
-
-// Schema for relaycode.config.json
-export const ConfigSchema = z.object({
-  projectId: z.string().min(1),
-  logLevel: LogLevelNameSchema,
-  clipboardPollInterval: z.number().int().positive().default(2000),
-  approval: z.enum(['yes', 'no']).default('yes'),
-  approvalOnErrorCount: z.number().int().min(0).default(0),
-  linter: z.string().default('bun tsc --noEmit'),
-  preCommand: z.string().default(''),
-  postCommand: z.string().default(''),
-  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
-});
-export type Config = z.infer<typeof ConfigSchema>;
-
-export const PatchStrategySchema = z.enum([
-  'replace',
-  'new-unified',
-  'multi-search-replace',
-  'unified',
-]).default('replace');
-export type PatchStrategy = z.infer<typeof PatchStrategySchema>;
-
-// Schema for operations parsed from code blocks
-export const FileOperationSchema = z.union([
-  z.object({
-    type: z.literal('write'),
-    path: z.string(),
-    content: z.string(),
-    patchStrategy: PatchStrategySchema,
-  }),
-  z.object({
-    type: z.literal('delete'),
-    path: z.string(),
-  }),
-]);
-export type FileOperation = z.infer<typeof FileOperationSchema>;
-
-// Schema for the control YAML block at the end of the LLM response
-export const ControlYamlSchema = z.object({
-  projectId: z.string(),
-  uuid: z.string().uuid(),
-  changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
-});
-export type ControlYaml = z.infer<typeof ControlYamlSchema>;
-
-// The fully parsed response from the clipboard
-export const ParsedLLMResponseSchema = z.object({
-  control: ControlYamlSchema,
-  operations: z.array(FileOperationSchema),
-  reasoning: z.array(z.string()),
-});
-export type ParsedLLMResponse = z.infer<typeof ParsedLLMResponseSchema>;
-
-// Schema for the snapshot of original files
-export const FileSnapshotSchema = z.record(z.string(), z.string().nullable()); // path -> content | null (if file didn't exist)
-export type FileSnapshot = z.infer<typeof FileSnapshotSchema>;
-
-// Schema for the state file (.relaycode/{uuid}.yml or .pending.yml)
-export const StateFileSchema = z.object({
-  uuid: z.string().uuid(),
-  projectId: z.string(),
-  createdAt: z.string().datetime(),
-  reasoning: z.array(z.string()),
-  operations: z.array(FileOperationSchema),
-  snapshot: FileSnapshotSchema,
-  approved: z.boolean(),
-});
-export type StateFile = z.infer<typeof StateFileSchema>;
-
-// Shell command execution result
-export const ShellCommandResultSchema = z.object({
-    stdout: z.string(),
-    stderr: z.string(),
-    exitCode: z.number().nullable(),
-});
-export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
-````
-
 ## File: src/core/state.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -535,6 +450,96 @@ export const deletePendingState = async (cwd: string, uuid: string): Promise<voi
     throw error;
   }
 };
+````
+
+## File: src/types.ts
+````typescript
+import { z } from 'zod';
+
+export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'debug']).default('info');
+export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
+
+// Schema for relaycode.config.json
+export const ConfigSchema = z.object({
+  projectId: z.string().min(1),
+  logLevel: LogLevelNameSchema,
+  clipboardPollInterval: z.number().int().positive().default(2000),
+  approval: z.enum(['yes', 'no']).default('yes'),
+  approvalOnErrorCount: z.number().int().min(0).default(0),
+  linter: z.string().default('bun tsc --noEmit'),
+  preCommand: z.string().default(''),
+  postCommand: z.string().default(''),
+  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
+});
+export type Config = z.infer<typeof ConfigSchema>;
+
+export const PatchStrategySchema = z.enum([
+  'replace',
+  'new-unified',
+  'multi-search-replace',
+  'unified',
+]).default('replace');
+export type PatchStrategy = z.infer<typeof PatchStrategySchema>;
+
+// Schema for operations parsed from code blocks
+export const FileOperationSchema = z.union([
+  z.object({
+    type: z.literal('write'),
+    path: z.string(),
+    content: z.string(),
+    patchStrategy: PatchStrategySchema,
+  }),
+  z.object({
+    type: z.literal('delete'),
+    path: z.string(),
+  }),
+  z.object({
+    type: z.literal('rename'),
+    from: z.string(),
+    to: z.string(),
+  }),
+]);
+export type FileOperation = z.infer<typeof FileOperationSchema>;
+
+// Schema for the control YAML block at the end of the LLM response
+export const ControlYamlSchema = z.object({
+  projectId: z.string(),
+  uuid: z.string().uuid(),
+  changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
+});
+export type ControlYaml = z.infer<typeof ControlYamlSchema>;
+
+// The fully parsed response from the clipboard
+export const ParsedLLMResponseSchema = z.object({
+  control: ControlYamlSchema,
+  operations: z.array(FileOperationSchema),
+  reasoning: z.array(z.string()),
+});
+export type ParsedLLMResponse = z.infer<typeof ParsedLLMResponseSchema>;
+
+// Schema for the snapshot of original files
+export const FileSnapshotSchema = z.record(z.string(), z.string().nullable()); // path -> content | null (if file didn't exist)
+export type FileSnapshot = z.infer<typeof FileSnapshotSchema>;
+
+// Schema for the state file (.relaycode/{uuid}.yml or .pending.yml)
+export const StateFileSchema = z.object({
+  uuid: z.string().uuid(),
+  projectId: z.string(),
+  createdAt: z.string().datetime(),
+  reasoning: z.array(z.string()),
+  operations: z.array(FileOperationSchema),
+  snapshot: FileSnapshotSchema,
+  approved: z.boolean(),
+});
+export type StateFile = z.infer<typeof StateFileSchema>;
+
+// Shell command execution result
+export const ShellCommandResultSchema = z.object({
+    stdout: z.string(),
+    stderr: z.string(),
+    exitCode: z.number().nullable(),
+});
+export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
 ````
 
 ## File: src/utils/shell.ts
@@ -671,6 +676,40 @@ You can review your configuration in ${CONFIG_FILE_NAME}.
 };
 ````
 
+## File: tsconfig.json
+````json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
+}
+````
+
 ## File: src/commands/watch.ts
 ````typescript
 import { findConfig } from '../core/config';
@@ -796,6 +835,13 @@ Repeat this block for each replacement.
     \`\`\`typescript // "path/to/My Old Component.ts"
     //TODO: delete this file
     \`\`\`
+-   **Renaming/Moving a file**:
+    \`\`\`json // rename-file
+    {
+      "from": "src/old/path/to/file.ts",
+      "to": "src/new/path/to/file.ts"
+    }
+    \`\`\`
 `;
 
     const finalSteps = `---
@@ -913,40 +959,6 @@ export const watchCommand = async (): Promise<void> => {
   // Watch for changes after initial setup
   fs.watch(configPath, handleConfigChange);
 };
-````
-
-## File: tsconfig.json
-````json
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": ["ESNext"],
-    "moduleDetection": "force",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true,
-    "allowJs": true,
-    "checkJs": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "**/*.test.ts"]
-}
 ````
 
 ## File: src/core/clipboard.ts
@@ -1126,6 +1138,22 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   }
 };
 
+export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
+  const fromAbsolutePath = path.resolve(cwd, fromPath);
+  const toAbsolutePath = path.resolve(cwd, toPath);
+  await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
+  try {
+    await fs.rename(fromAbsolutePath, toAbsolutePath);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+      await fs.copyFile(fromAbsolutePath, toAbsolutePath);
+      await fs.unlink(fromAbsolutePath);
+    } else {
+      throw error;
+    }
+  }
+};
+
 export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
   const snapshot: FileSnapshot = {};
   
@@ -1163,6 +1191,9 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
   await Promise.all(operations.map(async op => {
     if (op.type === 'delete') {
       return deleteFile(op.path, cwd);
+    }
+    if (op.type === 'rename') {
+      return renameFile(op.from, op.to, cwd);
     } 
     
     if (op.patchStrategy === 'replace') {
@@ -1366,6 +1397,24 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             }
 
             const headerLine = headerLineUntrimmed.trim();
+            const content = rawContent.trim();
+
+            // Handle rename operation as a special case
+            if (headerLine === 'rename-file') {
+                logger.debug(`Found rename-file operation`);
+                matchedBlocks.push(fullMatch);
+                try {
+                    const renameData = JSON.parse(content);
+                    const RenameFileContentSchema = z.object({ from: z.string().min(1), to: z.string().min(1) });
+                    const renameOp = RenameFileContentSchema.parse(renameData);
+                    operations.push({ type: 'rename', from: renameOp.from, to: renameOp.to });
+                } catch (e) {
+                    logger.debug(`Invalid rename operation content, skipping: ${e instanceof Error ? e.message : String(e)}`);
+                }
+                continue;
+            }
+
+
             if (headerLine === '') {
                 logger.debug('Empty header line, skipping');
                 continue;
@@ -1373,7 +1422,6 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
 
             logger.debug(`Header line: ${headerLine}`);
             matchedBlocks.push(fullMatch);
-            const content = rawContent.trim();
             
             let filePath = '';
             let patchStrategy: PatchStrategy;
@@ -1482,6 +1530,9 @@ type ProcessPatchOptions = {
 };
 
 const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, cwd: string): Promise<{ added: number; removed: number }> => {
+    if (op.type === 'rename') {
+        return { added: 0, removed: 0 };
+    }
     const oldContent = snapshot[op.path] ?? null;
 
     if (op.type === 'delete') {
@@ -1575,7 +1626,14 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     logger.info(`🚀 Starting transaction for patch ${uuid}...`);
     logger.log(`Reasoning:\n  ${reasoning.join('\n  ')}`);
 
-    const affectedFilePaths = operations.map(op => op.path);
+    const affectedFilePaths = operations.reduce<string[]>((acc, op) => {
+        if (op.type === 'rename') {
+            acc.push(op.from, op.to);
+        } else {
+            acc.push(op.path);
+        }
+        return acc;
+    }, []);
     const snapshot = await createSnapshot(affectedFilePaths, cwd);
     
     const stateFile: StateFile = {
@@ -1595,8 +1653,10 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             const stats = await calculateLineChanges(op, snapshot, cwd);
             if (op.type === 'write') {
                 logger.success(`✔ Written: ${op.path} (+${stats.added}, -${stats.removed})`);
-            } else {
+            } else if (op.type === 'delete') {
                 logger.success(`✔ Deleted: ${op.path}`);
+            } else if (op.type === 'rename') {
+                logger.success(`✔ Renamed: ${op.from} -> ${op.to}`);
             }
             return stats;
         });

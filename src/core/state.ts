@@ -77,3 +77,16 @@ export const deletePendingState = async (cwd: string, uuid: string): Promise<voi
     throw error;
   }
 };
+
+export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    const fileContent = await fs.readFile(committedPath, 'utf-8');
+    const yamlContent = yaml.load(fileContent);
+    return StateFileSchema.parse(yamlContent);
+  } catch (error) {
+    // Can be file not found, YAML parsing error, or Zod validation error.
+    // In any case, we can't get the state file.
+    return null;
+  }
+};

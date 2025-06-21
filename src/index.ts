@@ -14,6 +14,7 @@ export {
     commitState,
     deletePendingState,
     hasBeenProcessed,
+    readStateFile,
     writePendingState
 } from './core/state';
 export { processPatch } from './core/transaction';

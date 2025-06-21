@@ -2,6 +2,8 @@
 import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { watchCommand } from './commands/watch';
+import { logCommand } from './commands/log';
+import { revertCommand } from './commands/revert';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -69,6 +71,17 @@ program
   .command('watch')
   .description('Starts watching the clipboard for code changes to apply.')
   .action(watchCommand);
+
+program
+  .command('log')
+  .description('Displays a log of all committed transactions.')
+  .action(logCommand);
+
+program
+  .command('revert')
+  .description('Reverts a committed transaction by its UUID.')
+  .argument('<uuid>', 'The UUID of the transaction to revert.')
+  .action(revertCommand);
 
 program.parse(process.argv);
 
