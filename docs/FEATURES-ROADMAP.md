@@ -1,6 +1,7 @@
 
-#### yaml without codefence
-#### user prompt in yaml
+#### should be abble to parse yaml without codefence
+#### user prompt summary in yaml
+#### words level chalk
 
 #### Automated Correction Prompting (The "Feedback Loop")
 
@@ -51,12 +52,6 @@
     2.  **Targeted `undo`:** Allow `undo` to take a transaction UUID or the number from the interactive log (`relay undo <uuid>` or `relay undo 3`).
     3.  **`redo` Command:** Since the `undo` command cleverly moves the undone transaction to a `undone/` directory, you can easily implement a `redo` command. It would find the latest file in `undone/`, move it back to the main state directory, and re-apply the snapshot from *before* that transaction (which is stored in its `snapshot` property).
 
-#### Partial Patch Application
-Problem: Sometimes an LLM response contains multiple, independent changes in different files. One change might be good, while another has a bug. Currently, it's all-or-nothing.
-Proposal: In manual approval mode, allow the user to select which file operations from a patch to apply.
-When approval is requested, list each file operation with a checkbox (using a library like inquirer).
-The user can select the operations they want.
-The transaction is then processed with only the approved operations, and the state file is saved accordingly.
 
 #### Partial Patch Application
 *   **Problem:** Sometimes an LLM response contains multiple, independent changes in different files. One change might be good, while another has a bug. Currently, it's all-or-nothing.
@@ -72,12 +67,11 @@ The transaction is then processed with only the approved operations, and the sta
     *   If the executable is still necessary, consider adding it to the `files` array in `package.json` and using a more robust method to locate it within the `node_modules` directory rather than copying it.
 
 #### ✅ DONE: add version to relay
-#### VERIFY: Transaction rolleed back still not really making all affected files to original state especially the failed file.
-#### VERIFY: shorhands commands not working, also commands without -- not working.
-#### VERIFY: ms took should be shown before asking approval
-#### VERIFY: system notification should fired on matched project id, not on valid patch format
-#### VERIFY: it still asking for approval on approval off in config setup
-#### words level chalk
+#### ✅ DONE: Transaction rolleed back still not really making all affected files to original state especially the failed file.
+#### ✅ DONE: shorhands commands not working, also commands without -- not working.
+#### ✅ DONE: ms took should be shown before asking approval
+#### ✅ DONE: system notification should fired on matched project id, not on valid patch format
+#### ✅ DONE: it still asking for approval on approval off in config setup
 #### ✅ DONE uuid that has already in undone should not be reprocess
 
 

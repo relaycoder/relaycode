@@ -20,6 +20,19 @@ export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
   return path.join(getStateDirectory(cwd),'undone', fileName);
 };
 
+// Helper to get all committed transaction file names.
+const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
+        return null;
+    }
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+    return { stateDir, files: transactionFiles };
+};
+
 // Ensure state directory exists with caching for performance
 const ensureStateDirectory = async (cwd: string): Promise<void> => {
   const dirPath = getStateDirectory(cwd);
@@ -88,16 +101,12 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
 };
 
 export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
-        return null; // No state directory, so no transactions
+    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
+    if (!transactionFileInfo) {
+        return null;
     }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
+    const { files: transactionFiles } = transactionFileInfo;
+    
     const promises = transactionFiles.map(async (file) => {
         const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
         if (!stateFile) {
@@ -116,20 +125,12 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
 }
 
 export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
+    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
+    if (!transactionFileInfo || transactionFileInfo.files.length === 0) {
         return null;
     }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
-    if (transactionFiles.length === 0) {
-        return null;
-    }
-
+    const { stateDir, files: transactionFiles } = transactionFileInfo;
+    
     // Read creation date from each file without parsing the whole thing.
     // This is much faster than reading and parsing the full YAML for every file.
     const filesWithDates = await Promise.all(

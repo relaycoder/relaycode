@@ -7,19 +7,21 @@ import { exec } from 'child_process';
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
 
+const WINDOWS_FALLBACK_DIR = path.join(process.cwd(), 'fallbacks', 'windows');
+const WINDOWS_CLIPBOARD_EXE = 'clipboard_x86_64.exe';
+const WINDOWS_CLIPBOARD_PATH = path.join(WINDOWS_FALLBACK_DIR, WINDOWS_CLIPBOARD_EXE);
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {
   return () => new Promise((resolve) => {
     try {
-      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-      if (!fs.existsSync(localExePath)) {
+      if (!fs.existsSync(WINDOWS_CLIPBOARD_PATH)) {
         logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
         // Resolve with empty string to avoid stopping the watcher loop, but log an error.
         return resolve('');
       }
       
-      const command = `"${localExePath}" --paste`;
+      const command = `"${WINDOWS_CLIPBOARD_PATH}" --paste`;
       
       exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
         if (error) {
@@ -50,19 +52,18 @@ const ensureClipboardExecutable = () => {
         path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
         // Local installation paths
         path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
-        path.join(process.cwd(), 'fallbacks', 'windows')
+        WINDOWS_FALLBACK_DIR,
       ];
       
       // Create fallbacks directory in the current project if it doesn't exist
-      const localFallbacksDir = path.join(process.cwd(), 'fallbacks', 'windows');
-      if (!fs.existsSync(localFallbacksDir)) {
-        fs.mkdirSync(localFallbacksDir, { recursive: true });
+      if (!fs.existsSync(WINDOWS_FALLBACK_DIR)) {
+        fs.mkdirSync(WINDOWS_FALLBACK_DIR, { recursive: true });
       }
       
       // Find an existing executable
       let sourceExePath = null;
       for (const dir of possiblePaths) {
-        const exePath = path.join(dir, 'clipboard_x86_64.exe');
+        const exePath = path.join(dir, WINDOWS_CLIPBOARD_EXE);
         if (fs.existsSync(exePath)) {
           sourceExePath = exePath;
           break;
@@ -70,8 +71,8 @@ const ensureClipboardExecutable = () => {
       }
       
       // Copy the executable to the local fallbacks directory if found
-      if (sourceExePath && sourceExePath !== path.join(localFallbacksDir, 'clipboard_x86_64.exe')) {
-        fs.copyFileSync(sourceExePath, path.join(localFallbacksDir, 'clipboard_x86_64.exe'));
+      if (sourceExePath && sourceExePath !== WINDOWS_CLIPBOARD_PATH) {
+        fs.copyFileSync(sourceExePath, WINDOWS_CLIPBOARD_PATH);
         logger.info('Copied Windows clipboard executable to local fallbacks directory');
       } else if (!sourceExePath) {
         logger.error('Windows clipboard executable not found in any location');
