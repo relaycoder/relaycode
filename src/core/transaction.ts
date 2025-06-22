@@ -56,7 +56,7 @@ const logCompletionSummary = (
     logger.success(`✅ Transaction ${uuid} committed successfully!`);
 };
 
-const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnapshot, reason: string): Promise<void> => {
+const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnapshot, reason: string, enableNotifications: boolean = true): Promise<void> => {
     logger.warn(`Rolling back changes: ${reason}`);
     try {
         await restoreSnapshot(snapshot, cwd);
@@ -68,7 +68,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
         try {
             await deletePendingState(cwd, uuid);
             logger.success(`↩️ Transaction ${uuid} rolled back.`);
-            notifyFailure(uuid);
+            notifyFailure(uuid, enableNotifications);
         } catch (cleanupError) {
             logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
         }
@@ -167,19 +167,19 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.log(`  - Final linter error count: ${finalErrorCount}`);
         
         let isApproved: boolean;
-        if (config.approval === 'yes') { // config.approval === 'yes' is default, allows auto-approval
+        if (config.approvalMode === 'auto') { // Auto mode allows conditional auto-approval
             const canAutoApprove = finalErrorCount <= config.approvalOnErrorCount;
 
             if (canAutoApprove) {
                 logger.success('  - Changes automatically approved based on your configuration.');
                 isApproved = true;
             } else {
-                notifyApprovalRequired(config.projectId);
+                notifyApprovalRequired(config.projectId, config.enableNotifications);
                 isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
             }
-        } else { // config.approval === 'no' now means "always prompt"
-            logger.warn('Manual approval required because "approval" is set to "no".');
-            notifyApprovalRequired(config.projectId);
+        } else { // Manual mode always requires user approval
+            logger.warn('Manual approval required because "approvalMode" is set to "manual".');
+            notifyApprovalRequired(config.projectId, config.enableNotifications);
             isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
         }
 
@@ -188,12 +188,12 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
-            notifySuccess(uuid);
+            notifySuccess(uuid, config.enableNotifications);
         } else {
             throw new Error('Changes were not approved.');
         }
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        await rollbackTransaction(cwd, uuid, snapshot, reason);
+        await rollbackTransaction(cwd, uuid, snapshot, reason, config.enableNotifications);
     }
 };

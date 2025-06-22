@@ -4,7 +4,12 @@ const appName = 'Relaycode';
 
 // This is a "fire-and-forget" utility. If notifications fail for any reason
 // (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
-const sendNotification = (options: { title: string; message: string; }) => {
+const sendNotification = (options: { title: string; message: string; enableNotifications?: boolean }) => {
+    // Skip notification if explicitly disabled
+    if (options.enableNotifications === false) {
+        return;
+    }
+    
     try {
         notifier.notify(
             {
@@ -24,30 +29,34 @@ const sendNotification = (options: { title: string; message: string; }) => {
     }
 };
 
-export const notifyPatchDetected = (projectId: string) => {
+export const notifyPatchDetected = (projectId: string, enableNotifications: boolean = true) => {
     sendNotification({
         title: appName,
         message: `New patch detected for project \`${projectId}\`.`,
+        enableNotifications,
     });
 };
 
-export const notifyApprovalRequired = (projectId: string) => {
+export const notifyApprovalRequired = (projectId: string, enableNotifications: boolean = true) => {
     sendNotification({
         title: appName,
         message: `Action required to approve changes for \`${projectId}\`.`,
+        enableNotifications,
     });
 };
 
-export const notifySuccess = (uuid: string) => {
+export const notifySuccess = (uuid: string, enableNotifications: boolean = true) => {
     sendNotification({
         title: appName,
         message: `Patch \`${uuid}\` applied successfully.`,
+        enableNotifications,
     });
 };
 
-export const notifyFailure = (uuid: string) => {
+export const notifyFailure = (uuid: string, enableNotifications: boolean = true) => {
     sendNotification({
         title: appName,
         message: `Patch \`${uuid}\` failed and was rolled back.`,
+        enableNotifications,
     });
 };

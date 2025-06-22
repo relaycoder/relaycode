@@ -8,12 +8,13 @@ export const ConfigSchema = z.object({
   projectId: z.string().min(1),
   logLevel: LogLevelNameSchema,
   clipboardPollInterval: z.number().int().positive().default(2000),
-  approval: z.enum(['yes', 'no']).default('yes'),
+  approvalMode: z.enum(['auto', 'manual']).default('auto'),
   approvalOnErrorCount: z.number().int().min(0).default(0),
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
   preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
+  enableNotifications: z.boolean().default(true),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

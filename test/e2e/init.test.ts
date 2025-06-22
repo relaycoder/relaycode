@@ -33,7 +33,7 @@ describe('e2e/init', () => {
         const parsedConfig = ConfigSchema.parse(config);
         expect(parsedConfig.projectId).toBe(path.basename(context.testDir.path));
         expect(parsedConfig.clipboardPollInterval).toBe(2000);
-        expect(parsedConfig.approval).toBe('yes');
+        expect(parsedConfig.approvalMode).toBe('auto');
         expect(parsedConfig.linter).toBe('bun tsc --noEmit');
 
         // Check for state directory

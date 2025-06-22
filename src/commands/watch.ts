@@ -207,7 +207,7 @@ export const watchCommand = async (): Promise<void> => {
         return;
       }
 
-      notifyPatchDetected(config.projectId);
+      notifyPatchDetected(config.projectId, config.enableNotifications);
       logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
       await processPatch(config, parsedResponse);
       logger.info('--------------------------------------------------');

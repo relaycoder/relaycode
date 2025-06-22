@@ -134,13 +134,14 @@ export const createTestConfig = async (cwd: string, overrides: Partial<Config> =
     const defaultConfig: Config = {
         projectId: 'test-project',
         clipboardPollInterval: 100,
-        approval: 'yes',
+        approvalMode: 'auto',
         approvalOnErrorCount: 0,
         linter: `bun -e "process.exit(0)"`, // A command that always succeeds
         preCommand: '',
         postCommand: '',
         logLevel: 'info',
         preferredStrategy: 'auto',
+        enableNotifications: false,
     };
     const config = { ...defaultConfig, ...overrides };
     await fs.writeFile(path.join(cwd, CONFIG_FILE_NAME), JSON.stringify(config, null, 2));

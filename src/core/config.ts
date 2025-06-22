@@ -36,12 +36,13 @@ export const createConfig = async (projectId: string, cwd: string = process.cwd(
     const config = {
         projectId,
         clipboardPollInterval: 2000,
-        approval: 'yes' as const,
+        approvalMode: 'auto' as const,
         approvalOnErrorCount: 0,
         linter: 'bun tsc --noEmit',
         preCommand: '',
         postCommand: '',
         preferredStrategy: 'auto' as const,
+        enableNotifications: true,
     };
     
     // Ensure the schema defaults are applied, including for logLevel

@@ -25,7 +25,7 @@ describe('e2e/transaction', () => {
         const newContent = 'console.log("new content");';
         const { uuid } = await runProcessPatch(
             context,
-            { linter: '', approval: 'yes' },
+            { linter: '', approvalMode: 'auto' },
             [{ type: 'edit', path: testFile, content: newContent }]
         );
         // Add a small delay to ensure file operations have completed
@@ -61,7 +61,7 @@ describe('e2e/transaction', () => {
     it('should rollback changes when manually disapproved', async () => {
         const { uuid } = await runProcessPatch(
             context,
-            { approval: 'no' },
+            { approvalMode: 'manual' },
             [{ type: 'edit', path: testFile, content: 'console.log("I will be rolled back");' }],
             { prompter: async () => false }
         );
@@ -77,7 +77,7 @@ describe('e2e/transaction', () => {
     it('should require manual approval if linter errors exceed approvalOnErrorCount', async () => {
         await runProcessPatch(
             context,
-            { approval: 'yes', approvalOnErrorCount: 0, linter: 'bun tsc' },
+            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'bun tsc' },
             [{ type: 'edit', path: testFile, content: 'const x: string = 123;' }],
             { prompter: async () => false }
         );
@@ -131,7 +131,7 @@ describe('e2e/transaction', () => {
     it('should rollback new file and its new empty parent directory on rejection', async () => {
         const newFilePath = 'src/new/dir/file.ts';
         
-        await runProcessPatch(context, { approval: 'no' },
+        await runProcessPatch(context, { approvalMode: 'manual' },
             [{ type: 'new', path: newFilePath, content: 'content' }], { prompter: async () => false });
 
         const fileExists = await fs.access(path.join(context.testDir.path, newFilePath)).then(() => true).catch(() => false);
@@ -154,7 +154,7 @@ describe('e2e/transaction', () => {
 
         await createTestFile(context.testDir.path, existingFilePath, 'const existing = true;');
 
-        await runProcessPatch(context, { approval: 'no' },
+        await runProcessPatch(context, { approvalMode: 'manual' },
             [{ type: 'new', path: newFilePath, content: 'const brandNew = true;' }],
             { prompter: async () => false });
 
@@ -244,7 +244,7 @@ describe('e2e/transaction', () => {
         await createTestFile(context.testDir.path, fileToDelete, originalDeleteContent);
         
         const { uuid } = await runProcessPatch(
-            context, { approval: 'no' },
+            context, { approvalMode: 'manual' },
             [{ type: 'delete', path: fileToDelete }], { prompter: async () => false }
         );
 
@@ -265,7 +265,7 @@ describe('e2e/transaction', () => {
 
         const { uuid } = await runProcessPatch(
             context,
-            { approval: 'yes', approvalOnErrorCount: 1, linter: 'bun tsc' },
+            { approvalMode: 'auto', approvalOnErrorCount: 1, linter: 'bun tsc' },
             [{ type: 'edit', path: testFile, content: badContent }]
         );
         
@@ -349,7 +349,7 @@ describe('e2e/transaction', () => {
 
         await runProcessPatch(
             context,
-            { approval: 'no' },
+            { approvalMode: 'manual' },
             [{ type: 'edit', path: testFile, content: 'I will be rolled back' }],
             { prompter, responseOverrides: { uuid } }
         );
@@ -456,7 +456,7 @@ describe('e2e/transaction', () => {
         // Disapprove the transaction
         await runProcessPatch(
             context,
-            { approval: 'no' },
+            { approvalMode: 'manual' },
             [
                 { type: 'edit', path: fileToModify, content: 'export const a = 100;' },
                 { type: 'delete', path: fileToDelete },
