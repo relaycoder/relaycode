@@ -1,6 +1,5 @@
 const notifier = require('toasted-notifier');
-
-const appName = 'Relaycode';
+import { APP_NAME } from './constants';
 
 // This is a "fire-and-forget" utility. If notifications fail for any reason
 // (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
@@ -32,7 +31,7 @@ const sendNotification = (options: { title: string; message: string; enableNotif
 const createNotifier = (messageTemplate: (param: string) => string) => {
     return (param: string, enableNotifications: boolean = true) => {
         sendNotification({
-            title: appName,
+            title: APP_NAME,
             message: messageTemplate(param),
             enableNotifications,
         });

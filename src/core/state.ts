@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
+import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX, STATE_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
 import { fileExists, safeRename } from './executor';
 
@@ -11,13 +11,13 @@ const stateDirectoryCache = new Map<string, boolean>();
 const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
 
 export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  const fileName = isPending ? `${uuid}${PENDING_STATE_FILE_SUFFIX}` : `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
   return path.join(getStateDirectory(cwd), fileName);
 };
 
 export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
-  const fileName = `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd),'undone', fileName);
+  const fileName = `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
+  return path.join(getStateDirectory(cwd), UNDONE_DIRECTORY_NAME, fileName);
 };
 
 // Helper to get all committed transaction file names.
@@ -29,7 +29,7 @@ const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: st
         return null;
     }
     const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+    const transactionFiles = files.filter(f => f.endsWith(COMMITTED_STATE_FILE_SUFFIX) && !f.endsWith(PENDING_STATE_FILE_SUFFIX));
     return { stateDir, files: transactionFiles };
 };
 
@@ -108,7 +108,7 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     const { files: transactionFiles } = transactionFileInfo;
     
     const promises = transactionFiles.map(async (file) => {
-        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
+        const stateFile = await readStateFile(cwd, file.replace(COMMITTED_STATE_FILE_SUFFIX, ''));
         if (!stateFile) {
             logger.warn(`Could not read or parse state file ${file}. Skipping.`);
         }
@@ -174,5 +174,5 @@ export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<
     }
 
     // Now read the full content of only the latest file
-    return readStateFile(cwd, latestFile.file.replace('.yml', ''));
+    return readStateFile(cwd, latestFile.file.replace(COMMITTED_STATE_FILE_SUFFIX, ''));
 };

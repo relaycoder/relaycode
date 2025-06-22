@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { watchCommand } from './commands/watch';
 import { logCommand } from './commands/log';
+import { COMMAND_NAME } from './utils/constants';
 import { undoCommand } from './commands/undo';
 import { revertCommand } from './commands/revert';
 import { applyCommand } from './commands/apply';
@@ -41,7 +42,7 @@ try {
 const program = new Command();
 
 program
-  .name('relay')
+  .name(COMMAND_NAME)
   .version(version)
   .description('A developer assistant that automates applying code changes from LLMs.');
 

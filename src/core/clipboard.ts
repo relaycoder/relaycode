@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { executeShellCommand } from '../utils/shell';
+import { FALLBACKS_DIR, WINDOWS_CLIPBOARD_EXE_NAME, WINDOWS_DIR } from '../utils/constants';
 
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
@@ -31,9 +32,8 @@ const checkLinuxClipboardDependencies = async () => {
   }
 };
 
-const WINDOWS_FALLBACK_DIR = path.join(process.cwd(), 'fallbacks', 'windows');
-const WINDOWS_CLIPBOARD_EXE = 'clipboard_x86_64.exe';
-const WINDOWS_CLIPBOARD_PATH = path.join(WINDOWS_FALLBACK_DIR, WINDOWS_CLIPBOARD_EXE);
+const WINDOWS_FALLBACK_DIR = path.join(process.cwd(), FALLBACKS_DIR, WINDOWS_DIR);
+const WINDOWS_CLIPBOARD_PATH = path.join(WINDOWS_FALLBACK_DIR, WINDOWS_CLIPBOARD_EXE_NAME);
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {
@@ -73,9 +73,9 @@ const ensureClipboardExecutable = () => {
       // Try to find clipboard executables in common locations
       const possiblePaths = [
         // Global installation path
-        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
+        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', FALLBACKS_DIR, WINDOWS_DIR),
         // Local installation paths
-        path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
+        path.join(process.cwd(), 'node_modules', 'clipboardy', FALLBACKS_DIR, WINDOWS_DIR),
         WINDOWS_FALLBACK_DIR,
       ];
       
@@ -87,7 +87,7 @@ const ensureClipboardExecutable = () => {
       // Find an existing executable
       let sourceExePath = null;
       for (const dir of possiblePaths) {
-        const exePath = path.join(dir, WINDOWS_CLIPBOARD_EXE);
+        const exePath = path.join(dir, WINDOWS_CLIPBOARD_EXE_NAME);
         if (fs.existsSync(exePath)) {
           sourceExePath = exePath;
           break;

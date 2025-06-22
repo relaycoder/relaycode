@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
 import { logger, getErrorMessage, isEnoentError } from '../utils/logger';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME, GITIGNORE_COMMENT } from '../utils/constants';
 
 const getInitMessage = (projectId: string): string => `
 ✅ relaycode has been initialized for this project.
@@ -26,7 +26,7 @@ Next steps:
 
 const updateGitignore = async (cwd: string): Promise<void> => {
     const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
-    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+    const entry = `\n${GITIGNORE_COMMENT}\n/${STATE_DIRECTORY_NAME}/\n`;
 
     try {
         let content = await fs.readFile(gitignorePath, 'utf-8');

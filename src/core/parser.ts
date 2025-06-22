@@ -11,7 +11,8 @@ import {
 import {
     CODE_BLOCK_START_MARKER,
     CODE_BLOCK_END_MARKER,
-    DELETE_FILE_MARKER
+    DELETE_FILE_MARKER,
+    RENAME_FILE_OPERATION
 } from '../utils/constants';
 import { logger } from '../utils/logger';
 
@@ -106,7 +107,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             const content = rawContent.trim();
 
             // Handle rename operation as a special case
-            if (headerLine === 'rename-file') {
+            if (headerLine === RENAME_FILE_OPERATION) {
                 logger.debug(`Found rename-file operation`);
                 matchedBlocks.push(fullMatch);
                 try {
