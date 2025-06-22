@@ -1,4 +1,4 @@
-
+#### make sure clipboard is working in linux
 #### ✅ DONE: should be abble to parse yaml without codefence
 #### user prompt summary in yaml for .relaycode log
 #### words level chalk

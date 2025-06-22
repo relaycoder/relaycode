@@ -3,9 +3,33 @@ import { logger, getErrorMessage } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
+import { executeShellCommand } from '../utils/shell';
 
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
+
+const checkLinuxClipboardDependencies = async () => {
+  if (process.platform === 'linux') {
+      logger.debug('Checking for clipboard dependencies on Linux (xsel or xclip)...');
+      try {
+          // Using `command -v` is more portable than `which`. Redirect stdout/stderr to keep it clean.
+          const { exitCode } = await executeShellCommand('command -v xsel >/dev/null 2>&1 || command -v xclip >/dev/null 2>&1');
+          if (exitCode !== 0) {
+              logger.error('-----------------------------------------------------------------------');
+              logger.error('ACTION REQUIRED: Clipboard support on Linux requires `xsel` or `xclip`.');
+              logger.error('Please install one of these tools to enable clipboard monitoring.');
+              logger.error('Example on Debian/Ubuntu: sudo apt install xsel');
+              logger.error('Example on Fedora/CentOS: sudo dnf install xsel');
+              logger.error('Example on Arch Linux:    sudo pacman -S xsel');
+              logger.error('-----------------------------------------------------------------------');
+          } else {
+              logger.debug('Linux clipboard dependency check passed.');
+          }
+      } catch (error) {
+          logger.warn(`An error occurred while checking for clipboard dependencies: ${getErrorMessage(error)}`);
+      }
+  }
+};
 
 const WINDOWS_FALLBACK_DIR = path.join(process.cwd(), 'fallbacks', 'windows');
 const WINDOWS_CLIPBOARD_EXE = 'clipboard_x86_64.exe';
@@ -90,6 +114,8 @@ export const createClipboardWatcher = (
 ) => {
   // Ensure clipboard executable exists before starting
   ensureClipboardExecutable();
+  // Check for Linux dependencies. This is fire-and-forget.
+  checkLinuxClipboardDependencies();
   
   // On Windows, use the direct Windows reader
   // Otherwise use the provided reader or clipboardy
