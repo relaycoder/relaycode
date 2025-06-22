@@ -1,5 +1,5 @@
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot, FileOperation } from '../types';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
@@ -62,7 +62,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
     } catch (error) {
-        logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Fatal: Rollback failed: ${getErrorMessage(error)}`);
         // Do not rethrow; we're already in a final error handling state.
     } finally {
         try {
@@ -70,7 +70,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
             logger.success(`↩️ Transaction ${uuid} rolled back.`);
             notifyFailure(uuid, enableNotifications);
         } catch (cleanupError) {
-            logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+            logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${getErrorMessage(cleanupError)}`);
         }
     }
 };
@@ -193,7 +193,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             throw new Error('Changes were not approved.');
         }
     } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = getErrorMessage(error);
         await rollbackTransaction(cwd, uuid, snapshot, reason, config.enableNotifications);
     }
 };

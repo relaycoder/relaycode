@@ -1,10 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { findLatestStateFile } from '../core/state';
 import { restoreSnapshot } from '../core/executor';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
+import { formatTransactionDetails } from './log';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -19,14 +20,12 @@ export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompt
         return;
     }
 
+    const [uuidLine, ...otherLines] = formatTransactionDetails(latestTransaction, { showSpacing: true });
     logger.log(`The last transaction to be undone is:`);
-    logger.info(`- UUID: ${latestTransaction.uuid}`);
-    logger.log(`  Date: ${new Date(latestTransaction.createdAt).toLocaleString()}`);
-    if (latestTransaction.reasoning && latestTransaction.reasoning.length > 0) {
-        logger.log('  Reasoning:');
-        latestTransaction.reasoning.forEach(r => logger.log(`    - ${r}`));
+    if (uuidLine) {
+        logger.info(uuidLine); // UUID line with info color
     }
-    logger.log('');
+    otherLines.forEach(line => logger.log(line));
 
     const confirmed = await getConfirmation('Are you sure you want to undo this transaction? (y/N)');
 
@@ -53,7 +52,7 @@ export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompt
         logger.success(`✅ Last transaction successfully undone.`);
 
     } catch (error) {
-        logger.error(`Failed to undo transaction: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Failed to undo transaction: ${getErrorMessage(error)}`);
         logger.error('Your file system may be in a partially restored state. Please check your files.');
     }
 };

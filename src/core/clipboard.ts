@@ -1,5 +1,5 @@
 import clipboardy from 'clipboardy';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
@@ -34,7 +34,7 @@ const createDirectWindowsClipboardReader = (): ClipboardReader => {
       });
     } catch (syncError) {
       // Catch synchronous errors during setup (e.g., path issues).
-      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${getErrorMessage(syncError)}`);
       resolve('');
     }
   });
@@ -77,7 +77,7 @@ const ensureClipboardExecutable = () => {
         logger.error('Windows clipboard executable not found in any location');
       }
     } catch (error) {
-      logger.warn('Error ensuring clipboard executable: ' + (error instanceof Error ? error.message : String(error)));
+      logger.warn('Error ensuring clipboard executable: ' + getErrorMessage(error));
     }
   }
 };
@@ -109,7 +109,7 @@ export const createClipboardWatcher = (
     } catch (error) {
       // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
       // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
+      logger.warn('Could not read from clipboard: ' + getErrorMessage(error));
     }
   };
 

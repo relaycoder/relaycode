@@ -17,10 +17,177 @@ src/core/state.ts
 src/core/transaction.ts
 src/index.ts
 src/types.ts
+src/utils/constants.ts
+src/utils/logger.ts
+src/utils/notifier.ts
+src/utils/prompt.ts
+src/utils/shell.ts
 tsconfig.json
 ```
 
 # Files
+
+## File: src/utils/constants.ts
+````typescript
+export const CONFIG_FILE_NAME = 'relaycode.config.json';
+export const STATE_DIRECTORY_NAME = '.relaycode';
+export const GITIGNORE_FILE_NAME = '.gitignore';
+
+export const CODE_BLOCK_START_MARKER = '// START';
+export const CODE_BLOCK_END_MARKER = '// END';
+export const DELETE_FILE_MARKER = '//TODO: delete this file';
+````
+
+## File: src/utils/prompt.ts
+````typescript
+import { logger } from './logger';
+
+export const getConfirmation = (question: string): Promise<boolean> => {
+  return new Promise(resolve => {
+    logger.prompt(question);
+    process.stdin.setEncoding('utf8');
+    process.stdin.resume();
+    const onData = (text: string) => {
+      const cleanedText = text.trim().toLowerCase();
+      if (cleanedText === 'y' || cleanedText === 'yes') {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+      process.stdin.pause();
+      process.stdin.removeListener('data', onData);
+    };
+    process.stdin.on('data', onData);
+  });
+};
+````
+
+## File: src/utils/logger.ts
+````typescript
+import chalk from 'chalk';
+import { LogLevelName } from '../types';
+
+const LogLevels = {
+  silent: 0,
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+} as const;
+
+let currentLogLevel: LogLevelName = 'info'; // Default level
+
+export const logger = {
+  setLevel: (level: LogLevelName) => {
+    if (level in LogLevels) {
+      currentLogLevel = level;
+    }
+  },
+  info: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.blue(message));
+    }
+  },
+  success: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.green(message));
+    }
+  },
+  warn: (message: string) => {
+    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
+      console.log(chalk.yellow(message));
+    }
+  },
+  error: (message: string) => {
+    if (LogLevels.error <= LogLevels[currentLogLevel]) {
+      console.log(chalk.red(message));
+    }
+  },
+  debug: (message: string) => {
+    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
+      console.log(chalk.gray(message));
+    }
+  },
+  log: (message: string) => {
+    // General log, treat as info
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(message);
+    }
+  },
+  prompt: (message: string) => {
+    // Prompts are special and should be shown unless silent
+    if (currentLogLevel !== 'silent') {
+      console.log(chalk.cyan(message));
+    }
+  },
+};
+````
+
+## File: src/utils/notifier.ts
+````typescript
+const notifier = require('toasted-notifier');
+
+const appName = 'Relaycode';
+
+// This is a "fire-and-forget" utility. If notifications fail for any reason
+// (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
+const sendNotification = (options: { title: string; message: string; enableNotifications?: boolean }) => {
+    // Skip notification if explicitly disabled
+    if (options.enableNotifications === false) {
+        return;
+    }
+    
+    try {
+        notifier.notify(
+            {
+                title: options.title,
+                message: options.message,
+                sound: false, // Keep it quiet by default
+                wait: false,
+            },
+            (err: any) => {
+                if (err) {
+                    // Silently ignore errors. This is a non-critical feature.
+                }
+            }
+        );
+    } catch (err) {
+        // Silently ignore errors.
+    }
+};
+
+export const notifyPatchDetected = (projectId: string, enableNotifications: boolean = true) => {
+    sendNotification({
+        title: appName,
+        message: `New patch detected for project \`${projectId}\`.`,
+        enableNotifications,
+    });
+};
+
+export const notifyApprovalRequired = (projectId: string, enableNotifications: boolean = true) => {
+    sendNotification({
+        title: appName,
+        message: `Action required to approve changes for \`${projectId}\`.`,
+        enableNotifications,
+    });
+};
+
+export const notifySuccess = (uuid: string, enableNotifications: boolean = true) => {
+    sendNotification({
+        title: appName,
+        message: `Patch \`${uuid}\` applied successfully.`,
+        enableNotifications,
+    });
+};
+
+export const notifyFailure = (uuid: string, enableNotifications: boolean = true) => {
+    sendNotification({
+        title: appName,
+        message: `Patch \`${uuid}\` failed and was rolled back.`,
+        enableNotifications,
+    });
+};
+````
 
 ## File: src/commands/apply.ts
 ````typescript
@@ -299,6 +466,14 @@ export {
 } from './core/state';
 export { processPatch } from './core/transaction';
 
+// Commands
+export { initCommand } from './commands/init';
+export { watchCommand } from './commands/watch';
+export { logCommand } from './commands/log';
+export { undoCommand } from './commands/undo';
+export { revertCommand } from './commands/revert';
+export { applyCommand } from './commands/apply';
+
 // Types
 export * from './types';
 
@@ -306,6 +481,64 @@ export * from './types';
 export { executeShellCommand, getErrorCount } from './utils/shell';
 export { logger } from './utils/logger';
 export { getConfirmation } from './utils/prompt';
+````
+
+## File: src/utils/shell.ts
+````typescript
+import { exec } from 'child_process';
+import path from 'path';
+import { logger } from './logger';
+
+type ExecutionResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
+export const executeShellCommand = (command: string, cwd = process.cwd()): Promise<ExecutionResult> => {
+  if (!command || command.trim() === '') {
+    return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+  }
+
+  // Normalize path for Windows environments
+  const normalizedCwd = path.resolve(cwd);
+
+  return new Promise((resolve) => {
+    // On Windows, make sure to use cmd.exe or PowerShell to execute command
+    const isWindows = process.platform === 'win32';
+    const finalCommand = isWindows 
+      ? `powershell -Command "${command.replace(/"/g, '\\"')}"`
+      : command;
+      
+    logger.debug(`Executing command: ${finalCommand} in directory: ${normalizedCwd}`);
+    
+    exec(finalCommand, { cwd: normalizedCwd }, (error, stdout, stderr) => {
+      const exitCode = error ? error.code || 1 : 0;
+      
+      resolve({
+        exitCode,
+        stdout: stdout.toString().trim(),
+        stderr: stderr.toString().trim(),
+      });
+    });
+  });
+};
+
+export const getErrorCount = async (linterCommand: string, cwd = process.cwd()): Promise<number> => {
+  if (!linterCommand || linterCommand.trim() === '') {
+    return 0;
+  }
+  
+  const { exitCode, stderr } = await executeShellCommand(linterCommand, cwd);
+  if (exitCode === 0) return 0;
+
+  // Try to extract a number of errors from stderr or assume 1 if non-zero exit code
+  const errorMatches = stderr.match(/(\d+) error/i);
+  if (errorMatches && errorMatches[1]) {
+    return parseInt(errorMatches[1], 10);
+  }
+  return exitCode === 0 ? 0 : 1;
+};
 ````
 
 ## File: src/commands/init.ts
@@ -728,22 +961,6 @@ export const createClipboardWatcher = (
 }
 ````
 
-## File: relaycode.config.json
-````json
-{
-  "projectId": "relaycode",
-  "logLevel": "info",
-  "clipboardPollInterval": 2000,
-  "approvalMode": "auto",
-  "approvalOnErrorCount": 0,
-  "linter": "bun tsc -b --noEmit",
-  "preCommand": "",
-  "postCommand": "",
-  "preferredStrategy": "auto",
-  "enableNotifications": false
-}
-````
-
 ## File: src/core/state.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -886,114 +1103,19 @@ export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<
 };
 ````
 
-## File: src/cli.ts
-````typescript
-#!/usr/bin/env node
-import { Command } from 'commander';
-import { initCommand } from './commands/init';
-import { watchCommand } from './commands/watch';
-import { logCommand } from './commands/log';
-import { undoCommand } from './commands/undo';
-import { revertCommand } from './commands/revert';
-import { applyCommand } from './commands/apply';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import fs from 'node:fs';
-
-// Default version in case we can't find the package.json
-let version = '0.0.0';
-
-try {
-  // Try multiple strategies to find the package.json
-  const require = createRequire(import.meta.url);
-  let pkg;
-  
-  // Strategy 1: Try to find package.json relative to the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  
-  // Try different possible locations
-  const possiblePaths = [
-    join(__dirname, 'package.json'),
-    join(__dirname, '..', 'package.json'),
-    join(__dirname, '..', '..', 'package.json'),
-    resolve(process.cwd(), 'package.json')
-  ];
-  
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      pkg = require(path);
-      break;
-    }
-  }
-  
-  // Strategy 2: If we still don't have it, try to get it from the npm package name
-  if (!pkg) {
-    try {
-      pkg = require('relaycode/package.json');
-    } catch (e) {
-      // Ignore this error
-    }
-  }
-  
-  if (pkg && pkg.version) {
-    version = pkg.version;
-  }
-} catch (error) {
-  // Fallback to default version if we can't find the package.json
-  console.error('Warning: Could not determine package version', error);
-}
-
-const program = new Command();
-
-program
-  .name('relay')
-  .version(version)
-  .description('A developer assistant that automates applying code changes from LLMs.');
-
-program
-  .command('init')
-  .alias('i')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
-
-program
-  .command('watch')
-  .alias('w')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(watchCommand);
-
-program
-  .command('apply')
-  .alias('a')
-  .description('Applies a patch from a specified file.')
-  .argument('<filePath>', 'The path to the file containing the patch.')
-  .action(applyCommand);
-
-program
-  .command('log')
-  .alias('l')
-  .description('Displays a log of all committed transactions.')
-  .action(() => logCommand());
-
-program
-  .command('undo')
-  .alias('u')
-  .description('Reverts the last successfully committed transaction.')
-  .action(() => undoCommand());
-
-program
-  .command('revert')
-  .alias('r')
-  .description('Reverts a committed transaction by its UUID.')
-  .argument('<uuid>', 'The UUID of the transaction to revert.')
-  .action(revertCommand);
-
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
+## File: relaycode.config.json
+````json
+{
+  "projectId": "relaycode",
+  "logLevel": "info",
+  "clipboardPollInterval": 2000,
+  "approvalMode": "auto",
+  "approvalOnErrorCount": 0,
+  "linter": "bun tsc -b --noEmit",
+  "preCommand": "",
+  "postCommand": "",
+  "preferredStrategy": "auto",
+  "enableNotifications": false
 }
 ````
 
@@ -1219,6 +1341,121 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
 };
 ````
 
+## File: src/cli.ts
+````typescript
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { watchCommand } from './commands/watch';
+import { logCommand } from './commands/log';
+import { undoCommand } from './commands/undo';
+import { revertCommand } from './commands/revert';
+import { applyCommand } from './commands/apply';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import fs from 'node:fs';
+
+// Default version in case we can't find the package.json
+let version = '0.0.0';
+
+try {
+  // Try multiple strategies to find the package.json
+  const require = createRequire(import.meta.url);
+  let pkg;
+  
+  // Strategy 1: Try to find package.json relative to the current file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  
+  // Try different possible locations
+  const possiblePaths = [
+    join(__dirname, 'package.json'),
+    join(__dirname, '..', 'package.json'),
+    join(__dirname, '..', '..', 'package.json'),
+    resolve(process.cwd(), 'package.json')
+  ];
+  
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      pkg = require(path);
+      break;
+    }
+  }
+  
+  // Strategy 2: If we still don't have it, try to get it from the npm package name
+  if (!pkg) {
+    try {
+      pkg = require('relaycode/package.json');
+    } catch (e) {
+      // Ignore this error
+    }
+  }
+  
+  if (pkg && pkg.version) {
+    version = pkg.version;
+  }
+} catch (error) {
+  // Fallback to default version if we can't find the package.json
+  console.error('Warning: Could not determine package version', error);
+}
+
+const program = new Command();
+
+program
+  .name('relay')
+  .version(version)
+  .description('A developer assistant that automates applying code changes from LLMs.');
+
+program
+  .command('init')
+  .alias('i')
+  .description('Initializes relaycode in the current project.')
+  .action(() => initCommand());
+
+program
+  .command('watch')
+  .alias('w')
+  .description('Starts watching the clipboard for code changes to apply.')
+  .action(() => {
+    // We don't need the `stop` function in the CLI context,
+    // as the process is terminated with Ctrl+C.
+    watchCommand();
+  });
+
+program
+  .command('apply')
+  .alias('a')
+  .description('Applies a patch from a specified file.')
+  .argument('<filePath>', 'The path to the file containing the patch.')
+  .action(applyCommand);
+
+program
+  .command('log')
+  .alias('l')
+  .description('Displays a log of all committed transactions.')
+  .action(() => logCommand());
+
+program
+  .command('undo')
+  .alias('u')
+  .description('Reverts the last successfully committed transaction.')
+  .action(() => undoCommand());
+
+program
+  .command('revert')
+  .alias('r')
+  .description('Reverts a committed transaction by its UUID.')
+  .argument('<uuid>', 'The UUID of the transaction to revert.')
+  .action(revertCommand);
+
+program.parse(process.argv);
+
+if (!process.argv.slice(2).length) {
+    program.outputHelp();
+}
+````
+
 ## File: src/commands/watch.ts
 ````typescript
 import { findConfig, loadConfigOrExit } from '../core/config';
@@ -1398,9 +1635,9 @@ Repeat this block for each replacement.
     return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
 }
 
-export const watchCommand = async (): Promise<void> => {
+export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
-  const configPath = path.resolve(process.cwd(), CONFIG_FILE_NAME);
+  const configPath = path.resolve(cwd, CONFIG_FILE_NAME);
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const startServices = (config: Config) => {
@@ -1432,7 +1669,7 @@ export const watchCommand = async (): Promise<void> => {
 
       notifyPatchDetected(config.projectId, config.enableNotifications);
       logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
-      await processPatch(config, parsedResponse);
+      await processPatch(config, parsedResponse, { cwd });
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');
     });
@@ -1443,7 +1680,7 @@ export const watchCommand = async (): Promise<void> => {
     debounceTimer = setTimeout(async () => {
       logger.info(`Configuration file change detected. Reloading...`);
       try {
-        const newConfig = await findConfig();
+        const newConfig = await findConfig(cwd);
         if (newConfig) {
           logger.success('Configuration reloaded. Restarting services...');
           startServices(newConfig);
@@ -1461,12 +1698,26 @@ export const watchCommand = async (): Promise<void> => {
   };
 
   // Initial startup
-  const initialConfig = await loadConfigOrExit();
+  const initialConfig = await loadConfigOrExit(cwd);
   logger.success('Configuration loaded. Starting relaycode watch...');
   startServices(initialConfig);
 
   // Watch for changes after initial setup
-  fs.watch(configPath, handleConfigChange);
+  const configWatcher = fs.watch(configPath, handleConfigChange);
+
+  const stopAll = () => {
+    if (clipboardWatcher) {
+      clipboardWatcher.stop();
+    }
+    if (configWatcher) {
+      configWatcher.close();
+      logger.info('Configuration file watcher stopped.');
+    }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+  };
+  return { stop: stopAll };
 };
 ````
 
@@ -1925,7 +2176,6 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     "commander": "^12.1.0",
     "diff-apply": "^1.0.6",
     "js-yaml": "^4.1.0",
-    "relaycode": "^1.0.2",
     "toasted-notifier": "^10.1.0",
     "uuid": "^9.0.1",
     "zod": "^3.25.67"

@@ -4,6 +4,7 @@ import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { logger } from '../utils/logger';
+import { safeRename } from './executor';
 
 const stateDirectoryCache = new Map<string, boolean>();
 
@@ -61,20 +62,7 @@ export const writePendingState = async (cwd: string, state: StateFile): Promise<
 export const commitState = async (cwd: string, uuid: string): Promise<void> => {
   const pendingPath = getStateFilePath(cwd, uuid, true);
   const committedPath = getStateFilePath(cwd, uuid, false);
-
-  try {
-    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
-    await fs.rename(pendingPath, committedPath);
-  } catch (error) {
-    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
-    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-      await fs.copyFile(pendingPath, committedPath);
-      await fs.unlink(pendingPath);
-    } else {
-      // Re-throw other errors
-      throw error;
-    }
-  }
+  await safeRename(pendingPath, committedPath);
 };
 
 export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {

@@ -1,4 +1,7 @@
-### Automated Correction Prompting (The "Feedback Loop")
+#### yaml without codefence
+#### user prompt in yaml
+
+#### Automated Correction Prompting (The "Feedback Loop")
 
 *   **Problem:** When a patch fails the linter or tests, the developer must manually copy the error message, switch back to the LLM, and construct a new prompt to ask for a fix. This is a slow and repetitive part of the workflow.
 *   **Proposal:**

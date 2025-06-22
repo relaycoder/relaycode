@@ -47,7 +47,7 @@
       // "test/e2e/init.test.ts",
       // "test/fixtures",
       // "test/unit",
-      "src/utils"
+      // "src/utils"
     ]
   },
   "security": {

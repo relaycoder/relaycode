@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
 import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
+import { getErrorMessage } from '../utils/logger';
 
 export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
@@ -32,20 +33,24 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   }
 };
 
+export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
+    try {
+        await fs.rename(fromPath, toPath);
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+            await fs.copyFile(fromPath, toPath);
+            await fs.unlink(fromPath);
+        } else {
+            throw error;
+        }
+    }
+};
+
 export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
   const fromAbsolutePath = path.resolve(cwd, fromPath);
   const toAbsolutePath = path.resolve(cwd, toPath);
   await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
-  try {
-    await fs.rename(fromAbsolutePath, toAbsolutePath);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-      await fs.copyFile(fromAbsolutePath, toAbsolutePath);
-      await fs.unlink(fromAbsolutePath);
-    } else {
-      throw error;
-    }
-  }
+  await safeRename(fromAbsolutePath, toAbsolutePath);
 };
 
 export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
@@ -133,7 +138,7 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
         throw new Error(result.error);
       }
     } catch (e) {
-      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
     }
   }
 };
@@ -164,9 +169,9 @@ const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): P
     }
   } catch (error) {
     // Ignore directory removal errors, but don't continue up the chain
-    if (!(error instanceof Error && 'code' in error && 
+    if (!(error instanceof Error && 'code' in error &&
         (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
-      console.warn(`Failed to clean up directory ${dirPath}:`, error);
+      console.warn(`Failed to clean up directory ${dirPath}:`, getErrorMessage(error));
     }
   }
 };

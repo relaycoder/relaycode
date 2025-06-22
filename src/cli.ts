@@ -8,42 +8,25 @@ import { revertCommand } from './commands/revert';
 import { applyCommand } from './commands/apply';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import fs from 'node:fs';
+import { dirname, join } from 'node:path';
 
 // Default version in case we can't find the package.json
 let version = '0.0.0';
 
 try {
-  // Try multiple strategies to find the package.json
   const require = createRequire(import.meta.url);
   let pkg;
-  
-  // Strategy 1: Try to find package.json relative to the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  
-  // Try different possible locations
-  const possiblePaths = [
-    join(__dirname, 'package.json'),
-    join(__dirname, '..', 'package.json'),
-    join(__dirname, '..', '..', 'package.json'),
-    resolve(process.cwd(), 'package.json')
-  ];
-  
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      pkg = require(path);
-      break;
-    }
-  }
-  
-  // Strategy 2: If we still don't have it, try to get it from the npm package name
-  if (!pkg) {
+  try {
+    // This works when installed as a package
+    pkg = require('relaycode/package.json');
+  } catch (e) {
+    // Fallback for local development
     try {
-      pkg = require('relaycode/package.json');
-    } catch (e) {
-      // Ignore this error
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      pkg = require(join(__dirname, '..', 'package.json'));
+    } catch (e2) {
+      // ignore
     }
   }
   
@@ -62,47 +45,27 @@ program
   .version(version)
   .description('A developer assistant that automates applying code changes from LLMs.');
 
-program
-  .command('init')
-  .alias('i')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
+const commands = [
+  { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: initCommand },
+  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', action: () => { watchCommand(); } },
+  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: applyCommand },
+  { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: logCommand },
+  { name: 'undo', alias: 'u', description: 'Reverts the last successfully committed transaction.', action: undoCommand },
+  { name: 'revert', alias: 'r', description: 'Reverts a committed transaction by its UUID.', args: { syntax: '<uuid>', description: 'The UUID of the transaction to revert.' }, action: revertCommand },
+];
 
-program
-  .command('watch')
-  .alias('w')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(() => {
-    // We don't need the `stop` function in the CLI context,
-    // as the process is terminated with Ctrl+C.
-    watchCommand();
-  });
+commands.forEach(cmdInfo => {
+  const command = program
+    .command(cmdInfo.name)
+    .alias(cmdInfo.alias)
+    .description(cmdInfo.description);
 
-program
-  .command('apply')
-  .alias('a')
-  .description('Applies a patch from a specified file.')
-  .argument('<filePath>', 'The path to the file containing the patch.')
-  .action(applyCommand);
+  if (cmdInfo.args) {
+    command.argument(cmdInfo.args.syntax, cmdInfo.args.description);
+  }
 
-program
-  .command('log')
-  .alias('l')
-  .description('Displays a log of all committed transactions.')
-  .action(() => logCommand());
-
-program
-  .command('undo')
-  .alias('u')
-  .description('Reverts the last successfully committed transaction.')
-  .action(() => undoCommand());
-
-program
-  .command('revert')
-  .alias('r')
-  .description('Reverts a committed transaction by its UUID.')
-  .argument('<uuid>', 'The UUID of the transaction to revert.')
-  .action(revertCommand);
+  command.action(cmdInfo.action);
+});
 
 program.parse(process.argv);
 

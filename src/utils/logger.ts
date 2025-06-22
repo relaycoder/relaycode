@@ -50,8 +50,12 @@ export const logger = {
   },
   prompt: (message: string) => {
     // Prompts are special and should be shown unless silent
-    if (currentLogLevel !== 'silent') {
-      console.log(chalk.cyan(message));
-    }
-  },
-};
+        if (currentLogLevel !== 'silent') {
+          console.log(chalk.cyan(message));
+        }
+      },
+    };
+    
+    export const getErrorMessage = (error: unknown): string => {
+        return error instanceof Error ? error.message : String(error);
+    };
