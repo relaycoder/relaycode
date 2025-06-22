@@ -1,8 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logger, getErrorMessage } from '../utils/logger';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { findLatestStateFile } from '../core/state';
+import { findLatestStateFile, getStateFilePath, getUndoneStateFilePath } from '../core/state';
 import { restoreSnapshot } from '../core/executor';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
 import { formatTransactionDetails } from './log';
@@ -40,13 +39,10 @@ export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompt
         await restoreSnapshot(latestTransaction.snapshot, cwd);
         logger.success('  - Successfully restored file snapshot.');
 
-        const stateDir = path.resolve(cwd, STATE_DIRECTORY_NAME);
-        const undoneDir = path.join(stateDir, 'undone');
-        await fs.mkdir(undoneDir, { recursive: true });
+        const oldPath = getStateFilePath(cwd, latestTransaction.uuid, false);
+        const newPath = getUndoneStateFilePath(cwd, latestTransaction.uuid);
 
-        const oldPath = path.join(stateDir, `${latestTransaction.uuid}.yml`);
-        const newPath = path.join(undoneDir, `${latestTransaction.uuid}.yml`);
-
+        await fs.mkdir(path.dirname(newPath), { recursive: true });
         await fs.rename(oldPath, newPath);
         logger.success(`  - Moved transaction file to 'undone' directory.`);
         logger.success(`✅ Last transaction successfully undone.`);

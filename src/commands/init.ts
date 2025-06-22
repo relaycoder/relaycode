@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
-import { logger, getErrorMessage } from '../utils/logger';
+import { logger, getErrorMessage, isEnoentError } from '../utils/logger';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
 
 const getInitMessage = (projectId: string): string => `
@@ -36,7 +36,7 @@ const updateGitignore = async (cwd: string): Promise<void> => {
             logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
         }
     } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        if (isEnoentError(error)) {
             await fs.writeFile(gitignorePath, entry.trim());
             logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
         } else {

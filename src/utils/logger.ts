@@ -59,3 +59,7 @@ export const logger = {
     export const getErrorMessage = (error: unknown): string => {
         return error instanceof Error ? error.message : String(error);
     };
+    
+    export const isEnoentError = (error: unknown): boolean => {
+        return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+    };

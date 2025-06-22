@@ -62,67 +62,6 @@ export const getConfirmation = (question: string): Promise<boolean> => {
 };
 ````
 
-## File: src/utils/logger.ts
-````typescript
-import chalk from 'chalk';
-import { LogLevelName } from '../types';
-
-const LogLevels = {
-  silent: 0,
-  error: 1,
-  warn: 2,
-  info: 3,
-  debug: 4,
-} as const;
-
-let currentLogLevel: LogLevelName = 'info'; // Default level
-
-export const logger = {
-  setLevel: (level: LogLevelName) => {
-    if (level in LogLevels) {
-      currentLogLevel = level;
-    }
-  },
-  info: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.blue(message));
-    }
-  },
-  success: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.green(message));
-    }
-  },
-  warn: (message: string) => {
-    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
-      console.log(chalk.yellow(message));
-    }
-  },
-  error: (message: string) => {
-    if (LogLevels.error <= LogLevels[currentLogLevel]) {
-      console.log(chalk.red(message));
-    }
-  },
-  debug: (message: string) => {
-    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
-      console.log(chalk.gray(message));
-    }
-  },
-  log: (message: string) => {
-    // General log, treat as info
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(message);
-    }
-  },
-  prompt: (message: string) => {
-    // Prompts are special and should be shown unless silent
-    if (currentLogLevel !== 'silent') {
-      console.log(chalk.cyan(message));
-    }
-  },
-};
-````
-
 ## File: src/utils/notifier.ts
 ````typescript
 const notifier = require('toasted-notifier');
@@ -226,69 +165,6 @@ export const applyCommand = async (filePath: string, cwd: string = process.cwd()
 };
 ````
 
-## File: src/commands/log.ts
-````typescript
-import { logger } from '../utils/logger';
-import { FileOperation } from '../types';
-import { readAllStateFiles } from '../core/state';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
-
-const opToString = (op: FileOperation): string => {
-    switch (op.type) {
-        case 'write': return `write: ${op.path}`;
-        case 'delete': return `delete: ${op.path}`;
-        case 'rename': return `rename: ${op.from} -> ${op.to}`;
-    }
-};
-
-export const logCommand = async (cwd: string = process.cwd(), outputCapture?: string[]): Promise<void> => {
-    const log = (message: string) => {
-        if (outputCapture) {
-            outputCapture.push(message);
-        } else {
-            logger.log(message);
-        }
-    };
-
-    const transactions = await readAllStateFiles(cwd);
-
-    if (transactions === null) {
-        log(`warn: State directory '${STATE_DIRECTORY_NAME}' not found. No logs to display.`);
-        log("info: Run 'relay init' to initialize the project.");
-        return;
-    }
-
-    if (transactions.length === 0) {
-        log('info: No committed transactions found.');
-        return;
-    }
-
-    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    log('Committed Transactions (most recent first):');
-    log('-------------------------------------------');
-
-    if (transactions.length === 0) {
-        log('info: No valid transactions found.');
-        return;
-    }
-
-    transactions.forEach(tx => {
-        log(`- UUID: ${tx.uuid}`);
-        log(`  Date: ${new Date(tx.createdAt).toLocaleString()}`);
-        if (tx.reasoning && tx.reasoning.length > 0) {
-            log('  Reasoning:');
-            tx.reasoning.forEach(r => log(`    - ${r}`));
-        }
-        if (tx.operations && tx.operations.length > 0) {
-            log('  Changes:');
-            tx.operations.forEach(op => log(`    - ${opToString(op)}`));
-        }
-        log(''); // Newline for spacing
-    });
-};
-````
-
 ## File: src/commands/revert.ts
 ````typescript
 import { loadConfigOrExit } from '../core/config';
@@ -378,15 +254,155 @@ export const revertCommand = async (uuidToRevert: string, cwd: string = process.
 };
 ````
 
+## File: src/utils/logger.ts
+````typescript
+import chalk from 'chalk';
+import { LogLevelName } from '../types';
+
+const LogLevels = {
+  silent: 0,
+  error: 1,
+  warn: 2,
+  info: 3,
+  debug: 4,
+} as const;
+
+let currentLogLevel: LogLevelName = 'info'; // Default level
+
+export const logger = {
+  setLevel: (level: LogLevelName) => {
+    if (level in LogLevels) {
+      currentLogLevel = level;
+    }
+  },
+  info: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.blue(message));
+    }
+  },
+  success: (message: string) => {
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(chalk.green(message));
+    }
+  },
+  warn: (message: string) => {
+    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
+      console.log(chalk.yellow(message));
+    }
+  },
+  error: (message: string) => {
+    if (LogLevels.error <= LogLevels[currentLogLevel]) {
+      console.log(chalk.red(message));
+    }
+  },
+  debug: (message: string) => {
+    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
+      console.log(chalk.gray(message));
+    }
+  },
+  log: (message: string) => {
+    // General log, treat as info
+    if (LogLevels.info <= LogLevels[currentLogLevel]) {
+      console.log(message);
+    }
+  },
+  prompt: (message: string) => {
+    // Prompts are special and should be shown unless silent
+        if (currentLogLevel !== 'silent') {
+          console.log(chalk.cyan(message));
+        }
+      },
+    };
+    
+    export const getErrorMessage = (error: unknown): string => {
+        return error instanceof Error ? error.message : String(error);
+    };
+````
+
+## File: src/commands/log.ts
+````typescript
+import { logger } from '../utils/logger';
+import { FileOperation, StateFile } from '../types';
+import { readAllStateFiles } from '../core/state';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+
+const opToString = (op: FileOperation): string => {
+    switch (op.type) {
+        case 'write': return `write: ${op.path}`;
+        case 'delete': return `delete: ${op.path}`;
+        case 'rename': return `rename: ${op.from} -> ${op.to}`;
+    }
+};
+
+export const formatTransactionDetails = (
+    tx: StateFile,
+    options: { showOperations?: boolean, showSpacing?: boolean } = {}
+): string[] => {
+    const lines: string[] = [];
+    lines.push(`- UUID: ${tx.uuid}`);
+    lines.push(`  Date: ${new Date(tx.createdAt).toLocaleString()}`);
+    if (tx.reasoning && tx.reasoning.length > 0) {
+        lines.push('  Reasoning:');
+        tx.reasoning.forEach(r => lines.push(`    - ${r}`));
+    }
+    if (options.showOperations && tx.operations && tx.operations.length > 0) {
+        lines.push('  Changes:');
+        tx.operations.forEach(op => lines.push(`    - ${opToString(op)}`));
+    }
+    if (options.showSpacing) {
+        lines.push(''); // Newline for spacing
+    }
+    return lines;
+};
+
+export const logCommand = async (cwd: string = process.cwd(), outputCapture?: string[]): Promise<void> => {
+    const log = (message: string) => {
+        if (outputCapture) {
+            outputCapture.push(message);
+        } else {
+            logger.log(message);
+        }
+    };
+
+    const transactions = await readAllStateFiles(cwd);
+
+    if (transactions === null) {
+        log(`warn: State directory '${STATE_DIRECTORY_NAME}' not found. No logs to display.`);
+        log("info: Run 'relay init' to initialize the project.");
+        return;
+    }
+
+    if (transactions.length === 0) {
+        log('info: No committed transactions found.');
+        return;
+    }
+
+    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    log('Committed Transactions (most recent first):');
+    log('-------------------------------------------');
+
+    if (transactions.length === 0) {
+        log('info: No valid transactions found.');
+        return;
+    }
+
+    transactions.forEach(tx => {
+        formatTransactionDetails(tx, { showOperations: true, showSpacing: true }).forEach(line => log(line));
+    });
+};
+````
+
 ## File: src/commands/undo.ts
 ````typescript
 import { promises as fs } from 'fs';
 import path from 'path';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { findLatestStateFile } from '../core/state';
 import { restoreSnapshot } from '../core/executor';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
+import { formatTransactionDetails } from './log';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -401,14 +417,12 @@ export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompt
         return;
     }
 
+    const [uuidLine, ...otherLines] = formatTransactionDetails(latestTransaction, { showSpacing: true });
     logger.log(`The last transaction to be undone is:`);
-    logger.info(`- UUID: ${latestTransaction.uuid}`);
-    logger.log(`  Date: ${new Date(latestTransaction.createdAt).toLocaleString()}`);
-    if (latestTransaction.reasoning && latestTransaction.reasoning.length > 0) {
-        logger.log('  Reasoning:');
-        latestTransaction.reasoning.forEach(r => logger.log(`    - ${r}`));
+    if (uuidLine) {
+        logger.info(uuidLine); // UUID line with info color
     }
-    logger.log('');
+    otherLines.forEach(line => logger.log(line));
 
     const confirmed = await getConfirmation('Are you sure you want to undo this transaction? (y/N)');
 
@@ -435,7 +449,7 @@ export const undoCommand = async (cwd: string = process.cwd(), prompter?: Prompt
         logger.success(`✅ Last transaction successfully undone.`);
 
     } catch (error) {
-        logger.error(`Failed to undo transaction: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Failed to undo transaction: ${getErrorMessage(error)}`);
         logger.error('Your file system may be in a partially restored state. Please check your files.');
     }
 };
@@ -538,82 +552,6 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
     return parseInt(errorMatches[1], 10);
   }
   return exitCode === 0 ? 0 : 1;
-};
-````
-
-## File: src/commands/init.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
-import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
-
-const getInitMessage = (projectId: string): string => `
-✅ relaycode has been initialized for this project.
-
-Configuration file created: ${CONFIG_FILE_NAME}
-
-Project ID: ${projectId}
-
-Next steps:
-1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
-   - 'auto' (default): The AI can choose the best patch strategy.
-   - 'new-unified': Forces the AI to use diffs, great for most changes.
-   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
-   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
-
-2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
-
-3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
-`;
-
-
-const updateGitignore = async (cwd: string): Promise<void> => {
-    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
-    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
-
-    try {
-        let content = await fs.readFile(gitignorePath, 'utf-8');
-        if (!content.includes(STATE_DIRECTORY_NAME)) {
-            content += entry;
-            await fs.writeFile(gitignorePath, content);
-            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
-        }
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            await fs.writeFile(gitignorePath, entry.trim());
-            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
-        } else {
-            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-};
-
-export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
-    logger.info('Initializing relaycode in this project...');
-
-    const config = await findConfig(cwd);
-    if (config) {
-        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
-        logger.log(`
-To use relaycode, please run 'relay watch'.
-It will display a system prompt to copy into your LLM assistant.
-You can review your configuration in ${CONFIG_FILE_NAME}.
-`);
-        return;
-    }
-    
-    const projectId = await getProjectId(cwd);
-    await createConfig(projectId, cwd);
-    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
-    
-    await ensureStateDirExists(cwd);
-    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
-
-    await updateGitignore(cwd);
-
-    logger.log(getInitMessage(projectId));
 };
 ````
 
@@ -786,10 +724,120 @@ export const ShellCommandResultSchema = z.object({
 export type ShellCommandResult = z.infer<typeof ShellCommandResultSchema>;
 ````
 
+## File: src/commands/init.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
+import { logger, getErrorMessage } from '../utils/logger';
+import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../utils/constants';
+
+const getInitMessage = (projectId: string): string => `
+✅ relaycode has been initialized for this project.
+
+Configuration file created: ${CONFIG_FILE_NAME}
+
+Project ID: ${projectId}
+
+Next steps:
+1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
+   - 'auto' (default): The AI can choose the best patch strategy.
+   - 'new-unified': Forces the AI to use diffs, great for most changes.
+   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
+   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
+
+2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
+
+3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
+`;
+
+
+const updateGitignore = async (cwd: string): Promise<void> => {
+    const gitignorePath = path.join(cwd, GITIGNORE_FILE_NAME);
+    const entry = `\n# relaycode state\n/${STATE_DIRECTORY_NAME}/\n`;
+
+    try {
+        let content = await fs.readFile(gitignorePath, 'utf-8');
+        if (!content.includes(STATE_DIRECTORY_NAME)) {
+            content += entry;
+            await fs.writeFile(gitignorePath, content);
+            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            await fs.writeFile(gitignorePath, entry.trim());
+            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+        } else {
+            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${getErrorMessage(error)}`);
+        }
+    }
+};
+
+export const initCommand = async (cwd: string = process.cwd()): Promise<void> => {
+    logger.info('Initializing relaycode in this project...');
+
+    const config = await findConfig(cwd);
+    if (config) {
+        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.log(`
+To use relaycode, please run 'relay watch'.
+It will display a system prompt to copy into your LLM assistant.
+You can review your configuration in ${CONFIG_FILE_NAME}.
+`);
+        return;
+    }
+    
+    const projectId = await getProjectId(cwd);
+    await createConfig(projectId, cwd);
+    logger.success(`Created configuration file: ${CONFIG_FILE_NAME}`);
+    
+    await ensureStateDirExists(cwd);
+    logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);
+
+    await updateGitignore(cwd);
+
+    logger.log(getInitMessage(projectId));
+};
+````
+
+## File: tsconfig.json
+````json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext"],
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+````
+
 ## File: src/core/clipboard.ts
 ````typescript
 import clipboardy from 'clipboardy';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
@@ -824,7 +872,7 @@ const createDirectWindowsClipboardReader = (): ClipboardReader => {
       });
     } catch (syncError) {
       // Catch synchronous errors during setup (e.g., path issues).
-      logger.error(`A synchronous error occurred while setting up clipboard reader: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+      logger.error(`A synchronous error occurred while setting up clipboard reader: ${getErrorMessage(syncError)}`);
       resolve('');
     }
   });
@@ -867,7 +915,7 @@ const ensureClipboardExecutable = () => {
         logger.error('Windows clipboard executable not found in any location');
       }
     } catch (error) {
-      logger.warn('Error ensuring clipboard executable: ' + (error instanceof Error ? error.message : String(error)));
+      logger.warn('Error ensuring clipboard executable: ' + getErrorMessage(error));
     }
   }
 };
@@ -899,7 +947,7 @@ export const createClipboardWatcher = (
     } catch (error) {
       // It's common for clipboard access to fail occasionally (e.g., on VM focus change)
       // So we log a warning but don't stop the watcher.
-      logger.warn('Could not read from clipboard: ' + (error instanceof Error ? error.message : String(error)));
+      logger.warn('Could not read from clipboard: ' + getErrorMessage(error));
     }
   };
 
@@ -927,37 +975,19 @@ export const createClipboardWatcher = (
 };
 ````
 
-## File: tsconfig.json
+## File: relaycode.config.json
 ````json
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": ["ESNext"],
-    "moduleDetection": "force",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "noUncheckedIndexedAccess": true,
-    "allowJs": true,
-    "checkJs": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "projectId": "relaycode",
+  "logLevel": "info",
+  "clipboardPollInterval": 2000,
+  "approvalMode": "auto",
+  "approvalOnErrorCount": 0,
+  "linter": "bun tsc -b --noEmit",
+  "preCommand": "",
+  "postCommand": "",
+  "preferredStrategy": "auto",
+  "enableNotifications": false
 }
 ````
 
@@ -969,6 +999,7 @@ import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { logger } from '../utils/logger';
+import { safeRename } from './executor';
 
 const stateDirectoryCache = new Map<string, boolean>();
 
@@ -1026,20 +1057,7 @@ export const writePendingState = async (cwd: string, state: StateFile): Promise<
 export const commitState = async (cwd: string, uuid: string): Promise<void> => {
   const pendingPath = getStateFilePath(cwd, uuid, true);
   const committedPath = getStateFilePath(cwd, uuid, false);
-
-  try {
-    // fs.rename is atomic on most POSIX filesystems if src and dest are on the same partition.
-    await fs.rename(pendingPath, committedPath);
-  } catch (error) {
-    // If rename fails with EXDEV, it's likely a cross-device move. Fallback to copy+unlink.
-    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-      await fs.copyFile(pendingPath, committedPath);
-      await fs.unlink(pendingPath);
-    } else {
-      // Re-throw other errors
-      throw error;
-    }
-  }
+  await safeRename(pendingPath, committedPath);
 };
 
 export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
@@ -1103,28 +1121,13 @@ export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<
 };
 ````
 
-## File: relaycode.config.json
-````json
-{
-  "projectId": "relaycode",
-  "logLevel": "info",
-  "clipboardPollInterval": 2000,
-  "approvalMode": "auto",
-  "approvalOnErrorCount": 0,
-  "linter": "bun tsc -b --noEmit",
-  "preCommand": "",
-  "postCommand": "",
-  "preferredStrategy": "auto",
-  "enableNotifications": false
-}
-````
-
 ## File: src/core/executor.ts
 ````typescript
 import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
 import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
+import { getErrorMessage } from '../utils/logger';
 
 export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
@@ -1155,20 +1158,24 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   }
 };
 
+export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
+    try {
+        await fs.rename(fromPath, toPath);
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+            await fs.copyFile(fromPath, toPath);
+            await fs.unlink(fromPath);
+        } else {
+            throw error;
+        }
+    }
+};
+
 export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
   const fromAbsolutePath = path.resolve(cwd, fromPath);
   const toAbsolutePath = path.resolve(cwd, toPath);
   await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
-  try {
-    await fs.rename(fromAbsolutePath, toAbsolutePath);
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-      await fs.copyFile(fromAbsolutePath, toAbsolutePath);
-      await fs.unlink(fromAbsolutePath);
-    } else {
-      throw error;
-    }
-  }
+  await safeRename(fromAbsolutePath, toAbsolutePath);
 };
 
 export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
@@ -1256,7 +1263,7 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
         throw new Error(result.error);
       }
     } catch (e) {
-      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
     }
   }
 };
@@ -1287,9 +1294,9 @@ const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): P
     }
   } catch (error) {
     // Ignore directory removal errors, but don't continue up the chain
-    if (!(error instanceof Error && 'code' in error && 
+    if (!(error instanceof Error && 'code' in error &&
         (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
-      console.warn(`Failed to clean up directory ${dirPath}:`, error);
+      console.warn(`Failed to clean up directory ${dirPath}:`, getErrorMessage(error));
     }
   }
 };
@@ -1353,42 +1360,25 @@ import { revertCommand } from './commands/revert';
 import { applyCommand } from './commands/apply';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
-import fs from 'node:fs';
+import { dirname, join } from 'node:path';
 
 // Default version in case we can't find the package.json
 let version = '0.0.0';
 
 try {
-  // Try multiple strategies to find the package.json
   const require = createRequire(import.meta.url);
   let pkg;
-  
-  // Strategy 1: Try to find package.json relative to the current file
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-  
-  // Try different possible locations
-  const possiblePaths = [
-    join(__dirname, 'package.json'),
-    join(__dirname, '..', 'package.json'),
-    join(__dirname, '..', '..', 'package.json'),
-    resolve(process.cwd(), 'package.json')
-  ];
-  
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      pkg = require(path);
-      break;
-    }
-  }
-  
-  // Strategy 2: If we still don't have it, try to get it from the npm package name
-  if (!pkg) {
+  try {
+    // This works when installed as a package
+    pkg = require('relaycode/package.json');
+  } catch (e) {
+    // Fallback for local development
     try {
-      pkg = require('relaycode/package.json');
-    } catch (e) {
-      // Ignore this error
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      pkg = require(join(__dirname, '..', 'package.json'));
+    } catch (e2) {
+      // ignore
     }
   }
   
@@ -1407,47 +1397,27 @@ program
   .version(version)
   .description('A developer assistant that automates applying code changes from LLMs.');
 
-program
-  .command('init')
-  .alias('i')
-  .description('Initializes relaycode in the current project.')
-  .action(() => initCommand());
+const commands = [
+  { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: initCommand },
+  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', action: () => { watchCommand(); } },
+  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: applyCommand },
+  { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: logCommand },
+  { name: 'undo', alias: 'u', description: 'Reverts the last successfully committed transaction.', action: undoCommand },
+  { name: 'revert', alias: 'r', description: 'Reverts a committed transaction by its UUID.', args: { syntax: '<uuid>', description: 'The UUID of the transaction to revert.' }, action: revertCommand },
+];
 
-program
-  .command('watch')
-  .alias('w')
-  .description('Starts watching the clipboard for code changes to apply.')
-  .action(() => {
-    // We don't need the `stop` function in the CLI context,
-    // as the process is terminated with Ctrl+C.
-    watchCommand();
-  });
+commands.forEach(cmdInfo => {
+  const command = program
+    .command(cmdInfo.name)
+    .alias(cmdInfo.alias)
+    .description(cmdInfo.description);
 
-program
-  .command('apply')
-  .alias('a')
-  .description('Applies a patch from a specified file.')
-  .argument('<filePath>', 'The path to the file containing the patch.')
-  .action(applyCommand);
+  if (cmdInfo.args) {
+    command.argument(cmdInfo.args.syntax, cmdInfo.args.description);
+  }
 
-program
-  .command('log')
-  .alias('l')
-  .description('Displays a log of all committed transactions.')
-  .action(() => logCommand());
-
-program
-  .command('undo')
-  .alias('u')
-  .description('Reverts the last successfully committed transaction.')
-  .action(() => undoCommand());
-
-program
-  .command('revert')
-  .alias('r')
-  .description('Reverts a committed transaction by its UUID.')
-  .argument('<uuid>', 'The UUID of the transaction to revert.')
-  .action(revertCommand);
+  command.action(cmdInfo.action);
+});
 
 program.parse(process.argv);
 
@@ -1941,7 +1911,7 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
 ## File: src/core/transaction.ts
 ````typescript
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot, FileOperation } from '../types';
-import { logger } from '../utils/logger';
+import { logger, getErrorMessage } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
@@ -2004,7 +1974,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
     } catch (error) {
-        logger.error(`Fatal: Rollback failed: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Fatal: Rollback failed: ${getErrorMessage(error)}`);
         // Do not rethrow; we're already in a final error handling state.
     } finally {
         try {
@@ -2012,7 +1982,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
             logger.success(`↩️ Transaction ${uuid} rolled back.`);
             notifyFailure(uuid, enableNotifications);
         } catch (cleanupError) {
-            logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+            logger.error(`Fatal: Could not clean up pending state for ${uuid}: ${getErrorMessage(cleanupError)}`);
         }
     }
 };
@@ -2135,7 +2105,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             throw new Error('Changes were not approved.');
         }
     } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = getErrorMessage(error);
         await rollbackTransaction(cwd, uuid, snapshot, reason, config.enableNotifications);
     }
 };

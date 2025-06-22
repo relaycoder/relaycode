@@ -3,19 +3,19 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { logger } from '../utils/logger';
+import { logger, isEnoentError } from '../utils/logger';
 import { safeRename } from './executor';
 
 const stateDirectoryCache = new Map<string, boolean>();
 
 const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
 
-const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
   const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
   return path.join(getStateDirectory(cwd), fileName);
 };
 
-const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
+export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
   const fileName = `${uuid}.yml`;
   return path.join(getStateDirectory(cwd),'undone', fileName);
 };
@@ -70,7 +70,7 @@ export const deletePendingState = async (cwd: string, uuid: string): Promise<voi
   try {
     await fs.unlink(pendingPath);
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (isEnoentError(error)) {
       // Already gone, that's fine.
       return;
     }

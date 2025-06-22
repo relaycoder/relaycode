@@ -2,13 +2,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { FileOperation, FileSnapshot } from '../types';
 import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
-import { getErrorMessage } from '../utils/logger';
+import { getErrorMessage, isEnoentError } from '../utils/logger';
 
 export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
   try {
     return await fs.readFile(path.resolve(cwd, filePath), 'utf-8');
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (isEnoentError(error)) {
       return null; // File doesn't exist
     }
     throw error;
@@ -25,7 +25,7 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   try {
     await fs.unlink(path.resolve(cwd, filePath));
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (isEnoentError(error)) {
       // File already deleted, which is fine.
       return;
     }
@@ -64,7 +64,7 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
         const content = await fs.readFile(absolutePath, 'utf-8');
         return { path: filePath, content };
       } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        if (isEnoentError(error)) {
           return { path: filePath, content: null }; // File doesn't exist, which is fine.
         } else {
           throw error;

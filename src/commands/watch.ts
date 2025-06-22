@@ -149,28 +149,22 @@ Repeat this block for each replacement.
     
     const footer = `---------------------------------------------------------------------------`;
 
-    let syntax = '';
-    let strategyDetails = '';
+    const syntaxMap = {
+        auto: syntaxAuto,
+        replace: syntaxReplace,
+        'new-unified': syntaxNewUnified,
+        'multi-search-replace': syntaxMultiSearchReplace,
+    };
 
-    switch (preferredStrategy) {
-        case 'replace':
-            syntax = syntaxReplace;
-            strategyDetails = ''; // Covered in 'otherOps'
-            break;
-        case 'new-unified':
-            syntax = syntaxNewUnified;
-            strategyDetails = sectionNewUnified;
-            break;
-        case 'multi-search-replace':
-            syntax = syntaxMultiSearchReplace;
-            strategyDetails = sectionMultiSearchReplace;
-            break;
-        case 'auto':
-        default:
-            syntax = syntaxAuto;
-            strategyDetails = `${sectionNewUnified}\n${sectionMultiSearchReplace}`;
-            break;
-    }
+    const strategyDetailsMap = {
+        auto: `${sectionNewUnified}\n${sectionMultiSearchReplace}`,
+        replace: '', // Covered in 'otherOps'
+        'new-unified': sectionNewUnified,
+        'multi-search-replace': sectionMultiSearchReplace,
+    };
+
+    const syntax = syntaxMap[preferredStrategy] ?? syntaxMap.auto;
+    const strategyDetails = strategyDetailsMap[preferredStrategy] ?? strategyDetailsMap.auto;
 
     return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
 }

@@ -3,7 +3,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { Config, ConfigSchema } from '../types';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
-import { logger } from '../utils/logger';
+import { logger, isEnoentError } from '../utils/logger';
 
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
   const configPath = path.join(cwd, CONFIG_FILE_NAME);
@@ -12,7 +12,7 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
     const configJson = JSON.parse(fileContent);
     return ConfigSchema.parse(configJson);
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (isEnoentError(error)) {
       return null;
     }
     if (error instanceof z.ZodError) {

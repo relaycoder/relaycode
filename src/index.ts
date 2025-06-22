@@ -10,14 +10,16 @@ export {
     writeFileContent 
 } from './core/executor';
 export { parseLLMResponse } from './core/parser';
-export { 
+export {
     commitState,
     deletePendingState,
     hasBeenProcessed,
     findLatestStateFile,
     readStateFile,
     readAllStateFiles,
-    writePendingState
+    writePendingState,
+    getStateFilePath,
+    getUndoneStateFilePath
 } from './core/state';
 export { processPatch } from './core/transaction';
 
