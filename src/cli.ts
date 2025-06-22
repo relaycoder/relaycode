@@ -47,12 +47,12 @@ program
   .description('A developer assistant that automates applying code changes from LLMs.');
 
 const commands = [
-  { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: initCommand },
+  { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: () => initCommand() },
   { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', action: () => { watchCommand(); } },
-  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: applyCommand },
-  { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: logCommand },
-  { name: 'undo', alias: 'u', description: 'Reverts the last successfully committed transaction.', action: undoCommand },
-  { name: 'revert', alias: 'r', description: 'Reverts a committed transaction by its UUID.', args: { syntax: '<uuid>', description: 'The UUID of the transaction to revert.' }, action: revertCommand },
+  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: (filePath: string) => applyCommand(filePath) },
+  { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: () => logCommand() },
+  { name: 'undo', alias: 'u', description: 'Reverts the last successfully committed transaction.', action: () => undoCommand() },
+  { name: 'revert', alias: 'r', description: 'Reverts a committed transaction by its UUID.', args: { syntax: '<uuid>', description: 'The UUID of the transaction to revert.' }, action: (uuid: string) => revertCommand(uuid) },
 ];
 
 commands.forEach(cmdInfo => {
