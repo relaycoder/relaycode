@@ -833,6 +833,22 @@ You can review your configuration in ${CONFIG_FILE_NAME}.
 };
 ````
 
+## File: relaycode.config.json
+````json
+{
+  "projectId": "relaycode",
+  "logLevel": "info",
+  "clipboardPollInterval": 2000,
+  "approvalMode": "auto",
+  "approvalOnErrorCount": 0,
+  "linter": "bun tsc -b --noEmit",
+  "preCommand": "",
+  "postCommand": "",
+  "preferredStrategy": "auto",
+  "enableNotifications": false
+}
+````
+
 ## File: src/core/clipboard.ts
 ````typescript
 import clipboardy from 'clipboardy';
@@ -844,19 +860,21 @@ import { exec } from 'child_process';
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
 
+const WINDOWS_FALLBACK_DIR = path.join(process.cwd(), 'fallbacks', 'windows');
+const WINDOWS_CLIPBOARD_EXE = 'clipboard_x86_64.exe';
+const WINDOWS_CLIPBOARD_PATH = path.join(WINDOWS_FALLBACK_DIR, WINDOWS_CLIPBOARD_EXE);
 
 // Direct Windows clipboard reader that uses the executable directly
 const createDirectWindowsClipboardReader = (): ClipboardReader => {
   return () => new Promise((resolve) => {
     try {
-      const localExePath = path.join(process.cwd(), 'fallbacks', 'windows', 'clipboard_x86_64.exe');
-      if (!fs.existsSync(localExePath)) {
+      if (!fs.existsSync(WINDOWS_CLIPBOARD_PATH)) {
         logger.error('Windows clipboard executable not found. Cannot watch clipboard on Windows.');
         // Resolve with empty string to avoid stopping the watcher loop, but log an error.
         return resolve('');
       }
       
-      const command = `"${localExePath}" --paste`;
+      const command = `"${WINDOWS_CLIPBOARD_PATH}" --paste`;
       
       exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
         if (error) {
@@ -887,19 +905,18 @@ const ensureClipboardExecutable = () => {
         path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', 'fallbacks', 'windows'),
         // Local installation paths
         path.join(process.cwd(), 'node_modules', 'clipboardy', 'fallbacks', 'windows'),
-        path.join(process.cwd(), 'fallbacks', 'windows')
+        WINDOWS_FALLBACK_DIR,
       ];
       
       // Create fallbacks directory in the current project if it doesn't exist
-      const localFallbacksDir = path.join(process.cwd(), 'fallbacks', 'windows');
-      if (!fs.existsSync(localFallbacksDir)) {
-        fs.mkdirSync(localFallbacksDir, { recursive: true });
+      if (!fs.existsSync(WINDOWS_FALLBACK_DIR)) {
+        fs.mkdirSync(WINDOWS_FALLBACK_DIR, { recursive: true });
       }
       
       // Find an existing executable
       let sourceExePath = null;
       for (const dir of possiblePaths) {
-        const exePath = path.join(dir, 'clipboard_x86_64.exe');
+        const exePath = path.join(dir, WINDOWS_CLIPBOARD_EXE);
         if (fs.existsSync(exePath)) {
           sourceExePath = exePath;
           break;
@@ -907,8 +924,8 @@ const ensureClipboardExecutable = () => {
       }
       
       // Copy the executable to the local fallbacks directory if found
-      if (sourceExePath && sourceExePath !== path.join(localFallbacksDir, 'clipboard_x86_64.exe')) {
-        fs.copyFileSync(sourceExePath, path.join(localFallbacksDir, 'clipboard_x86_64.exe'));
+      if (sourceExePath && sourceExePath !== WINDOWS_CLIPBOARD_PATH) {
+        fs.copyFileSync(sourceExePath, WINDOWS_CLIPBOARD_PATH);
         logger.info('Copied Windows clipboard executable to local fallbacks directory');
       } else if (!sourceExePath) {
         logger.error('Windows clipboard executable not found in any location');
@@ -972,22 +989,6 @@ export const createClipboardWatcher = (
   
   return { stop };
 };
-````
-
-## File: relaycode.config.json
-````json
-{
-  "projectId": "relaycode",
-  "logLevel": "info",
-  "clipboardPollInterval": 2000,
-  "approvalMode": "auto",
-  "approvalOnErrorCount": 0,
-  "linter": "bun tsc -b --noEmit",
-  "preCommand": "",
-  "postCommand": "",
-  "preferredStrategy": "auto",
-  "enableNotifications": false
-}
 ````
 
 ## File: src/cli.ts
@@ -1544,187 +1545,6 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
 };
 ````
 
-## File: src/core/state.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import yaml from 'js-yaml';
-import { StateFile, StateFileSchema } from '../types';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
-import { fileExists, safeRename } from './executor';
-
-const stateDirectoryCache = new Map<string, boolean>();
-
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
-
-export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd), fileName);
-};
-
-export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
-  const fileName = `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd),'undone', fileName);
-};
-
-// Ensure state directory exists with caching for performance
-const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = getStateDirectory(cwd);
-  if (!stateDirectoryCache.has(dirPath)) {
-    await fs.mkdir(dirPath, { recursive: true });
-    stateDirectoryCache.set(dirPath, true);
-  }
-};
-
-export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  const undonePath = getUndoneStateFilePath(cwd, uuid);
-  // Check if a transaction has been committed or undone.
-  // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-  // because we don't check for `.pending.yml` files.
-  return (await fileExists(committedPath)) || (await fileExists(undonePath));
-};
-
-export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
-  const validatedState = StateFileSchema.parse(state);
-  const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(cwd, state.uuid, true);
-  
-  // Ensure directory exists (cached)
-  await ensureStateDirectory(cwd);
-  
-  // Write file
-  await fs.writeFile(filePath, yamlString, 'utf-8');
-};
-
-export const commitState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  await safeRename(pendingPath, committedPath);
-};
-
-export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  try {
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    if (isEnoentError(error)) {
-      // Already gone, that's fine.
-      return;
-    }
-    throw error;
-  }
-};
-
-export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  try {
-    const fileContent = await fs.readFile(committedPath, 'utf-8');
-    const yamlContent = yaml.load(fileContent);
-    const parsed = StateFileSchema.safeParse(yamlContent);
-    if (parsed.success) {
-      return parsed.data;
-    }
-    logger.debug(`Could not parse state file ${committedPath}: ${parsed.error.message}`);
-    return null;
-  } catch (error) {
-    // Can be file not found or YAML parsing error.
-    // In any case, we can't get the state file.
-    return null;
-  }
-};
-
-export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
-        return null; // No state directory, so no transactions
-    }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
-    const promises = transactionFiles.map(async (file) => {
-        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
-        if (!stateFile) {
-            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
-        }
-        return stateFile;
-    });
-
-    const results = await Promise.all(promises);
-    const validResults = results.filter((sf): sf is StateFile => !!sf);
-
-    // Sort transactions by date, most recent first
-    validResults.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    return validResults;
-}
-
-export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
-        return null;
-    }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
-    if (transactionFiles.length === 0) {
-        return null;
-    }
-
-    // Read creation date from each file without parsing the whole thing.
-    // This is much faster than reading and parsing the full YAML for every file.
-    const filesWithDates = await Promise.all(
-        transactionFiles.map(async (file) => {
-            const filePath = path.join(stateDir, file);
-            let createdAt: Date | null = null;
-            try {
-                // Read only the first 512 bytes to find `createdAt`. This is an optimization.
-                const fileHandle = await fs.open(filePath, 'r');
-                const buffer = Buffer.alloc(512);
-                await fileHandle.read(buffer, 0, 512, 0);
-                await fileHandle.close();
-                const content = buffer.toString('utf-8');
-                // Extract date from a line like 'createdAt: 2023-01-01T00:00:00.000Z'
-                const match = content.match(/^createdAt:\s*['"]?(.+?)['"]?$/m);
-                if (match && match[1]) {
-                    createdAt = new Date(match[1]);
-                }
-            } catch (error) {
-                if (!isEnoentError(error)) {
-                  logger.debug(`Could not read partial date from ${file}: ${getErrorMessage(error)}`);
-                }
-            }
-            return { file, createdAt };
-        })
-    );
-
-    const validFiles = filesWithDates.filter(f => f.createdAt instanceof Date) as { file: string; createdAt: Date }[];
-
-    if (validFiles.length === 0) {
-        // Fallback for safety, though it should be rare.
-        const transactions = await readAllStateFiles(cwd);
-        return transactions?.[0] ?? null;
-    }
-
-    validFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-    const latestFile = validFiles[0];
-    if (!latestFile) {
-        return null;
-    }
-
-    // Now read the full content of only the latest file
-    return readStateFile(cwd, latestFile.file.replace('.yml', ''));
-};
-````
-
 ## File: src/core/executor.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -1964,6 +1784,188 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
   for (const dir of sortedDirs) {
     await removeEmptyParentDirectories(dir, projectRoot);
   }
+};
+````
+
+## File: src/core/state.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { StateFile, StateFileSchema } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
+import { fileExists, safeRename } from './executor';
+
+const stateDirectoryCache = new Map<string, boolean>();
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd), fileName);
+};
+
+export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
+  const fileName = `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd),'undone', fileName);
+};
+
+// Helper to get all committed transaction file names.
+const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
+        return null;
+    }
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+    return { stateDir, files: transactionFiles };
+};
+
+// Ensure state directory exists with caching for performance
+const ensureStateDirectory = async (cwd: string): Promise<void> => {
+  const dirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    stateDirectoryCache.set(dirPath, true);
+  }
+};
+
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  const undonePath = getUndoneStateFilePath(cwd, uuid);
+  // Check if a transaction has been committed or undone.
+  // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+  // because we don't check for `.pending.yml` files.
+  return (await fileExists(committedPath)) || (await fileExists(undonePath));
+};
+
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
+  const validatedState = StateFileSchema.parse(state);
+  const yamlString = yaml.dump(validatedState);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  
+  // Ensure directory exists (cached)
+  await ensureStateDirectory(cwd);
+  
+  // Write file
+  await fs.writeFile(filePath, yamlString, 'utf-8');
+};
+
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  await safeRename(pendingPath, committedPath);
+};
+
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  try {
+    await fs.unlink(pendingPath);
+  } catch (error) {
+    if (isEnoentError(error)) {
+      // Already gone, that's fine.
+      return;
+    }
+    throw error;
+  }
+};
+
+export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    const fileContent = await fs.readFile(committedPath, 'utf-8');
+    const yamlContent = yaml.load(fileContent);
+    const parsed = StateFileSchema.safeParse(yamlContent);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    logger.debug(`Could not parse state file ${committedPath}: ${parsed.error.message}`);
+    return null;
+  } catch (error) {
+    // Can be file not found or YAML parsing error.
+    // In any case, we can't get the state file.
+    return null;
+  }
+};
+
+export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
+    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
+    if (!transactionFileInfo) {
+        return null;
+    }
+    const { files: transactionFiles } = transactionFileInfo;
+    
+    const promises = transactionFiles.map(async (file) => {
+        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
+        if (!stateFile) {
+            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
+        }
+        return stateFile;
+    });
+
+    const results = await Promise.all(promises);
+    const validResults = results.filter((sf): sf is StateFile => !!sf);
+
+    // Sort transactions by date, most recent first
+    validResults.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return validResults;
+}
+
+export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
+    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
+    if (!transactionFileInfo || transactionFileInfo.files.length === 0) {
+        return null;
+    }
+    const { stateDir, files: transactionFiles } = transactionFileInfo;
+    
+    // Read creation date from each file without parsing the whole thing.
+    // This is much faster than reading and parsing the full YAML for every file.
+    const filesWithDates = await Promise.all(
+        transactionFiles.map(async (file) => {
+            const filePath = path.join(stateDir, file);
+            let createdAt: Date | null = null;
+            try {
+                // Read only the first 512 bytes to find `createdAt`. This is an optimization.
+                const fileHandle = await fs.open(filePath, 'r');
+                const buffer = Buffer.alloc(512);
+                await fileHandle.read(buffer, 0, 512, 0);
+                await fileHandle.close();
+                const content = buffer.toString('utf-8');
+                // Extract date from a line like 'createdAt: 2023-01-01T00:00:00.000Z'
+                const match = content.match(/^createdAt:\s*['"]?(.+?)['"]?$/m);
+                if (match && match[1]) {
+                    createdAt = new Date(match[1]);
+                }
+            } catch (error) {
+                if (!isEnoentError(error)) {
+                  logger.debug(`Could not read partial date from ${file}: ${getErrorMessage(error)}`);
+                }
+            }
+            return { file, createdAt };
+        })
+    );
+
+    const validFiles = filesWithDates.filter(f => f.createdAt instanceof Date) as { file: string; createdAt: Date }[];
+
+    if (validFiles.length === 0) {
+        // Fallback for safety, though it should be rare.
+        const transactions = await readAllStateFiles(cwd);
+        return transactions?.[0] ?? null;
+    }
+
+    validFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const latestFile = validFiles[0];
+    if (!latestFile) {
+        return null;
+    }
+
+    // Now read the full content of only the latest file
+    return readStateFile(cwd, latestFile.file.replace('.yml', ''));
 };
 ````
 

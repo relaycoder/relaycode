@@ -1332,4 +1332,4 @@ snapshot:
             await rollbackTransaction(cwd, uuid, snapshot, reason, config.enableNotifications);
         }
     };
-approved: false
+approved: true

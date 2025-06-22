@@ -35,16 +35,46 @@ const extractCodeBetweenMarkers = (content: string): string => {
 export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
     try {
         logger.debug('Parsing LLM response...');
-        const yamlMatch = rawText.match(YAML_BLOCK_REGEX);
-        logger.debug(`YAML match: ${yamlMatch ? 'Found' : 'Not found'}`);
-        if (!yamlMatch || typeof yamlMatch[1] !== 'string') {
-            logger.debug('No YAML block found or match[1] is not a string');
+        let yamlText: string | null = null;
+        let textWithoutYaml: string = rawText;
+
+        const yamlBlockMatch = rawText.match(YAML_BLOCK_REGEX);
+        if (yamlBlockMatch && yamlBlockMatch[1]) {
+            logger.debug('Found YAML code block.');
+            yamlText = yamlBlockMatch[1];
+            textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
+        } else {
+            logger.debug('No YAML code block found. Looking for raw YAML content at the end.');
+            const lines = rawText.trim().split('\n');
+            let yamlStartIndex = -1;
+            // Search from the end, but not too far, maybe last 15 lines
+            const searchLimit = Math.max(0, lines.length - 15);
+            for (let i = lines.length - 1; i >= searchLimit; i--) {
+                const trimmedLine = lines[i]?.trim();
+                if (trimmedLine && trimmedLine.match(/^projectId:\s*['"]?[\w.-]+['"]?$/)) {
+                    yamlStartIndex = i;
+                    break;
+                }
+            }
+
+            if (yamlStartIndex !== -1) {
+                logger.debug(`Found raw YAML starting at line ${yamlStartIndex}.`);
+                const yamlLines = lines.slice(yamlStartIndex);
+                const textWithoutYamlLines = lines.slice(0, yamlStartIndex);
+                yamlText = yamlLines.join('\n');
+                textWithoutYaml = textWithoutYamlLines.join('\n').trim();
+            }
+        }
+        
+        logger.debug(`YAML content: ${yamlText ? 'Found' : 'Not found'}`);
+        if (!yamlText) {
+            logger.debug('No YAML content found');
             return null;
         }
 
         let control;
         try {
-            const yamlContent = yaml.load(yamlMatch[1]);
+            const yamlContent = yaml.load(yamlText);
             logger.debug(`YAML content parsed: ${JSON.stringify(yamlContent)}`);
             control = ControlYamlSchema.parse(yamlContent);
             logger.debug(`Control schema parsed: ${JSON.stringify(control)}`);
@@ -52,8 +82,6 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
             logger.debug(`Error parsing YAML or control schema: ${e}`);
             return null;
         }
-
-        const textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
         
         const operations: FileOperation[] = [];
         const matchedBlocks: string[] = [];
