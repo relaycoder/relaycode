@@ -9,7 +9,6 @@
         "commander": "^12.1.0",
         "diff-apply": "^1.0.6",
         "js-yaml": "^4.1.0",
-        "relaycode": "^1.0.2",
         "toasted-notifier": "^10.1.0",
         "uuid": "^9.0.1",
         "zod": "^3.25.67",
@@ -120,8 +119,6 @@
     "onetime": ["onetime@6.0.0", "", { "dependencies": { "mimic-fn": "^4.0.0" } }, "sha512-1FlR+gjXK7X+AsAHso35MnyN5KqGwJRi/31ft6x0M194ht7S+rWAvd7PHss9xSKMzE0asv1pyIHaJYq+BbacAQ=="],
 
     "path-key": ["path-key@3.1.1", "", {}, "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q=="],
-
-    "relaycode": ["relaycode@1.0.2", "", { "dependencies": { "chalk": "^5.3.0", "clipboardy": "^4.0.0", "commander": "^12.0.0", "diff-apply": "^1.0.0", "js-yaml": "^4.1.0", "toasted-notifier": "^10.1.0", "uuid": "^9.0.0", "zod": "^3.22.4" }, "bin": { "relay": "dist/cli.js" } }, "sha512-iy8lS6aN+kKejPoJcUIWe1HrIpM54xDtpMtSc9RGi21vxwpZ4TDV8MWx+LhR9G+ZKtZ0sPVu7Ow1lV4I//Y57A=="],
 
     "semver": ["semver@7.7.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-RF0Fw+rO5AMf9MAyaRXI4AV0Ulj5lMHqVxxdSgiVbixSCXoEmmX/jk0CuJw4+3SqroYO9VoUh+HcuJivvtJemA=="],
 
