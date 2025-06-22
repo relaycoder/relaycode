@@ -1,3 +1,34 @@
+Attempting to undo the last transaction...
+node:path:1169
+      validateString(path, `paths[${i}]`);
+      ^
+
+TypeError [ERR_INVALID_ARG_TYPE]: The "paths[0]" argument must be of type string. Received an instance of Object
+    at Object.resolve (node:path:1169:7)
+    at getStateDirectory (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:19594:41)
+    at getCommittedTransactionFiles (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:19604:20)
+    at findLatestStateFile (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:19683:37)
+    at Command.undoCommand (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:20229:35)
+    at Command.listener [as _actionHandler] (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:866:20)
+    at file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:1334:67
+    at Command._chainOrCall (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:1269:14)
+    at Command._parseCommand (file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:1334:29)
+    at file:///home/realme-book/.bun/install/global/node_modules/relaycode/dist/cli.js:1203:29 {
+  code: 'ERR_INVALID_ARG_TYPE'
+}
+
+Node.js v20.18.1
+
+
+#### all-or-nothing vs
+#### DONE: do not fire notification on skipped uuid
+
+Starting clipboard watcher (polling every 2000ms)
+New clipboard content detected. Attempting to parse...
+Valid patch detected for project 'relaycode'. Processing...
+Skipping patch: uuid 'a6311de1-b844-4861-9c8e-a9d70de792f4' has already been processed.
+
+
 #### relay git commit
 #### VERIFY: make sure clipboard is working in linux
 #### ✅ DONE: should be abble to parse yaml without codefence

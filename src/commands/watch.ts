@@ -3,8 +3,7 @@ import { createClipboardWatcher } from '../core/clipboard';
 import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME } from '../utils/constants';
-import { notifyPatchDetected } from '../utils/notifier';
+import { CONFIG_FILE_NAME } from '../utils/constants'
 import { Config } from '../types';
 import fs from 'fs';
 import path from 'path';
@@ -201,9 +200,7 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
         return;
       }
 
-      notifyPatchDetected(config.projectId, config.enableNotifications);
-      logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
-      await processPatch(config, parsedResponse, { cwd });
+      await processPatch(config, parsedResponse, { cwd, notifyOnStart: true });
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');
     });

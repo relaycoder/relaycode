@@ -3,14 +3,15 @@ import { logger, getErrorMessage } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
 import { createSnapshot, restoreSnapshot, applyOperations } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
-import { getConfirmation } from '../utils/prompt';
-import { notifyApprovalRequired, notifyFailure, notifySuccess } from '../utils/notifier';
+import { getConfirmation } from '../utils/prompt'
+import { notifyApprovalRequired, notifyFailure, notifySuccess, notifyPatchDetected } from '../utils/notifier';
 
 type Prompter = (question: string) => Promise<boolean>;
 
 type ProcessPatchOptions = {
     prompter?: Prompter;
     cwd?: string;
+    notifyOnStart?: boolean;
 };
 
 const calculateLineChanges = (
@@ -91,6 +92,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
 export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse, options?: ProcessPatchOptions): Promise<void> => {
     const cwd = options?.cwd || process.cwd();
     const prompter = options?.prompter || getConfirmation;
+    const notifyOnStart = options?.notifyOnStart ?? false;
     const { control, operations, reasoning } = parsedResponse;
     const { uuid, projectId } = control;
     const startTime = performance.now();
@@ -103,6 +105,12 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     if (await hasBeenProcessed(cwd, uuid)) {
         logger.info(`Skipping patch: uuid '${uuid}' has already been processed.`);
         return;
+    }
+
+    // Notify if coming from watch mode, now that we know it's a new patch.
+    if (notifyOnStart) {
+        notifyPatchDetected(config.projectId, config.enableNotifications);
+        logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
     }
 
     // 2. Pre-flight checks
