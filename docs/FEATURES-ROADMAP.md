@@ -1,5 +1,5 @@
 
-#### should be abble to parse yaml without codefence
+#### ✅ DONE: should be abble to parse yaml without codefence
 #### user prompt summary in yaml for .relaycode log
 #### words level chalk
 
