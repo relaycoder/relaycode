@@ -29,34 +29,28 @@ const sendNotification = (options: { title: string; message: string; enableNotif
     }
 };
 
-export const notifyPatchDetected = (projectId: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `New patch detected for project \`${projectId}\`.`,
-        enableNotifications,
-    });
+const createNotifier = (messageTemplate: (param: string) => string) => {
+    return (param: string, enableNotifications: boolean = true) => {
+        sendNotification({
+            title: appName,
+            message: messageTemplate(param),
+            enableNotifications,
+        });
+    };
 };
 
-export const notifyApprovalRequired = (projectId: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Action required to approve changes for \`${projectId}\`.`,
-        enableNotifications,
-    });
-};
+export const notifyPatchDetected = createNotifier(
+    (projectId: string) => `New patch detected for project \`${projectId}\`.`
+);
 
-export const notifySuccess = (uuid: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Patch \`${uuid}\` applied successfully.`,
-        enableNotifications,
-    });
-};
+export const notifyApprovalRequired = createNotifier(
+    (projectId: string) => `Action required to approve changes for \`${projectId}\`.`
+);
 
-export const notifyFailure = (uuid: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Patch \`${uuid}\` failed and was rolled back.`,
-        enableNotifications,
-    });
-};
+export const notifySuccess = createNotifier(
+    (uuid: string) => `Patch \`${uuid}\` applied successfully.`
+);
+
+export const notifyFailure = createNotifier(
+    (uuid: string) => `Patch \`${uuid}\` failed and was rolled back.`
+);

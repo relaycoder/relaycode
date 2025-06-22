@@ -17,47 +17,35 @@ export const revertCommand = async (uuidToRevert: string, cwd: string = process.
     }
 
     // 3. Generate inverse operations
-    const inverse_operations: FileOperation[] = [];
-    // Process operations in reverse order to handle dependencies correctly
-    for (const op of [...stateToRevert.operations].reverse()) {
-        switch (op.type) {
-            case 'rename':
-                inverse_operations.push({ type: 'rename', from: op.to, to: op.from });
-                break;
-            case 'delete':
-                const deletedContent = stateToRevert.snapshot[op.path];
-                if (deletedContent === null || typeof deletedContent === 'undefined') {
-                    logger.warn(`Cannot revert deletion of ${op.path}, original content not found in snapshot. Skipping.`);
-                    continue;
+    const inverse_operations = [...stateToRevert.operations]
+        .reverse()
+        .map((op): FileOperation | null => {
+            switch (op.type) {
+                case 'rename':
+                    return { type: 'rename', from: op.to, to: op.from };
+                case 'delete': {
+                    const deletedContent = stateToRevert.snapshot[op.path];
+                    if (deletedContent === null || typeof deletedContent === 'undefined') {
+                        logger.warn(`Cannot revert deletion of ${op.path}, original content not found in snapshot. Skipping.`);
+                        return null;
+                    }
+                    return { type: 'write', path: op.path, content: deletedContent, patchStrategy: 'replace' };
                 }
-                inverse_operations.push({
-                    type: 'write',
-                    path: op.path,
-                    content: deletedContent,
-                    patchStrategy: 'replace',
-                });
-                break;
-            case 'write':
-                const originalContent = stateToRevert.snapshot[op.path];
-                if (typeof originalContent === 'undefined') {
-                    logger.warn(`Cannot find original state for ${op.path} in snapshot. Skipping revert for this operation.`);
-                    continue;
+                case 'write': {
+                    const originalContent = stateToRevert.snapshot[op.path];
+                    if (typeof originalContent === 'undefined') {
+                        logger.warn(`Cannot find original state for ${op.path} in snapshot. Skipping revert for this operation.`);
+                        return null;
+                    }
+                    if (originalContent === null) {
+                        return { type: 'delete', path: op.path };
+                    } else {
+                        return { type: 'write', path: op.path, content: originalContent, patchStrategy: 'replace' };
+                    }
                 }
-                if (originalContent === null) {
-                    // This was a new file. The inverse is to delete it.
-                    inverse_operations.push({ type: 'delete', path: op.path });
-                } else {
-                    // This was a file modification. The inverse is to restore original content.
-                    inverse_operations.push({
-                        type: 'write',
-                        path: op.path,
-                        content: originalContent,
-                        patchStrategy: 'replace',
-                    });
-                }
-                break;
-        }
-    }
+            }
+        })
+        .filter((op): op is FileOperation => op !== null);
 
     if (inverse_operations.length === 0) {
         logger.warn('No operations to revert for this transaction.');

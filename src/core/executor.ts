@@ -33,6 +33,15 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   }
 };
 
+export const fileExists = async (filePath: string, cwd: string = process.cwd()): Promise<boolean> => {
+  try {
+    await fs.access(path.resolve(cwd, filePath));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
     try {
         await fs.rename(fromPath, toPath);

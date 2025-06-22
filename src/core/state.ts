@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
-import { safeRename } from './executor';
+import { fileExists, safeRename } from './executor';
 
 const stateDirectoryCache = new Map<string, boolean>();
 
@@ -31,20 +31,11 @@ const ensureStateDirectory = async (cwd: string): Promise<void> => {
 
 export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
   const committedPath = getStateFilePath(cwd, uuid, false);
-  const undonePath = getUndoneStateFilePath(cwd,uuid);
-  try {
-    // Only check for a committed state file.
-    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-    await fs.access(committedPath);
-    return true;
-  } catch (e) {
-    try {
-      await fs.access(undonePath);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
+  const undonePath = getUndoneStateFilePath(cwd, uuid);
+  // Check if a transaction has been committed or undone.
+  // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+  // because we don't check for `.pending.yml` files.
+  return (await fileExists(committedPath)) || (await fileExists(undonePath));
 };
 
 export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
