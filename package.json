@@ -31,7 +31,6 @@
     "commander": "^12.1.0",
     "diff-apply": "^1.0.6",
     "js-yaml": "^4.1.0",
-    "relaycode": "^1.0.2",
     "toasted-notifier": "^10.1.0",
     "uuid": "^9.0.1",
     "zod": "^3.25.67"

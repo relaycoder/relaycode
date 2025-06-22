@@ -8,5 +8,5 @@
   "preCommand": "",
   "postCommand": "",
   "preferredStrategy": "auto",
-  "enableNotifications": true
+  "enableNotifications": false
 }

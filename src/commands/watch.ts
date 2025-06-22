@@ -175,9 +175,9 @@ Repeat this block for each replacement.
     return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
 }
 
-export const watchCommand = async (): Promise<void> => {
+export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
-  const configPath = path.resolve(process.cwd(), CONFIG_FILE_NAME);
+  const configPath = path.resolve(cwd, CONFIG_FILE_NAME);
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const startServices = (config: Config) => {
@@ -209,7 +209,7 @@ export const watchCommand = async (): Promise<void> => {
 
       notifyPatchDetected(config.projectId, config.enableNotifications);
       logger.success(`Valid patch detected for project '${config.projectId}'. Processing...`);
-      await processPatch(config, parsedResponse);
+      await processPatch(config, parsedResponse, { cwd });
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');
     });
@@ -220,7 +220,7 @@ export const watchCommand = async (): Promise<void> => {
     debounceTimer = setTimeout(async () => {
       logger.info(`Configuration file change detected. Reloading...`);
       try {
-        const newConfig = await findConfig();
+        const newConfig = await findConfig(cwd);
         if (newConfig) {
           logger.success('Configuration reloaded. Restarting services...');
           startServices(newConfig);
@@ -238,10 +238,24 @@ export const watchCommand = async (): Promise<void> => {
   };
 
   // Initial startup
-  const initialConfig = await loadConfigOrExit();
+  const initialConfig = await loadConfigOrExit(cwd);
   logger.success('Configuration loaded. Starting relaycode watch...');
   startServices(initialConfig);
 
   // Watch for changes after initial setup
-  fs.watch(configPath, handleConfigChange);
+  const configWatcher = fs.watch(configPath, handleConfigChange);
+
+  const stopAll = () => {
+    if (clipboardWatcher) {
+      clipboardWatcher.stop();
+    }
+    if (configWatcher) {
+      configWatcher.close();
+      logger.info('Configuration file watcher stopped.');
+    }
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+  };
+  return { stop: stopAll };
 };

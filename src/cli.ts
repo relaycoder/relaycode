@@ -72,7 +72,11 @@ program
   .command('watch')
   .alias('w')
   .description('Starts watching the clipboard for code changes to apply.')
-  .action(watchCommand);
+  .action(() => {
+    // We don't need the `stop` function in the CLI context,
+    // as the process is terminated with Ctrl+C.
+    watchCommand();
+  });
 
 program
   .command('apply')
