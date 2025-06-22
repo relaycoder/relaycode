@@ -95,7 +95,8 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
   return snapshot;
 };
 
-export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
+export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<Map<string, string>> => {
+  const newContents = new Map<string, string>();
   // Operations must be applied sequentially to ensure that if one fails,
   // we can roll back from a known state.
   for (const op of operations) {
@@ -106,50 +107,55 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
     if (op.type === 'rename') {
       await renameFile(op.from, op.to, cwd);
       continue;
-    } 
+    }
     
+    let finalContent: string;
+
     if (op.patchStrategy === 'replace') {
-      await writeFileContent(op.path, op.content, cwd);
-      continue;
-    }
-
-    // For patch strategies, apply them sequentially
-    const originalContent = await readFileContent(op.path, cwd);
-    if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
-      throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
-    }
-
-    try {
-      const diffParams = {
-        originalContent: originalContent ?? '',
-        diffContent: op.content,
-      };
-
-      let result;
-      switch (op.patchStrategy) {
-        case 'new-unified':
-          const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
-          result = await newUnifiedStrategy.applyDiff(diffParams);
-          break;
-        case 'multi-search-replace':
-          result = await multiSearchReplaceService.multiSearchReplaceService.applyDiff(diffParams);
-          break;
-        case 'unified':
-          result = await unifiedDiffService.unifiedDiffService.applyDiff(diffParams.originalContent, diffParams.diffContent);
-          break;
-        default:
-          throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
+      finalContent = op.content;
+    } else {
+      // For patch strategies, apply them sequentially
+      const originalContent = await readFileContent(op.path, cwd);
+      if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
+        throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
       }
 
-      if (result.success) {
-        await writeFileContent(op.path, result.content, cwd);
-      } else {
-        throw new Error(result.error);
+      try {
+        const diffParams = {
+          originalContent: originalContent ?? '',
+          diffContent: op.content,
+        };
+
+        let result;
+        switch (op.patchStrategy) {
+          case 'new-unified':
+            const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
+            result = await newUnifiedStrategy.applyDiff(diffParams);
+            break;
+          case 'multi-search-replace':
+            result = await multiSearchReplaceService.multiSearchReplaceService.applyDiff(diffParams);
+            break;
+          case 'unified':
+            result = await unifiedDiffService.unifiedDiffService.applyDiff(diffParams.originalContent, diffParams.diffContent);
+            break;
+          default:
+            throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
+        }
+
+        if (result.success) {
+          finalContent = result.content;
+        } else {
+          throw new Error(result.error);
+        }
+      } catch (e) {
+        throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
       }
-    } catch (e) {
-      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
     }
+    
+    await writeFileContent(op.path, finalContent, cwd);
+    newContents.set(op.path, finalContent);
   }
+  return newContents;
 };
 
 // Helper to check if a directory is empty

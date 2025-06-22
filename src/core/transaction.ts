@@ -1,7 +1,7 @@
 import { Config, ParsedLLMResponse, StateFile, FileSnapshot, FileOperation } from '../types';
 import { logger, getErrorMessage } from '../utils/logger';
 import { getErrorCount, executeShellCommand } from '../utils/shell';
-import { createSnapshot, restoreSnapshot, applyOperations, readFileContent } from './executor';
+import { createSnapshot, restoreSnapshot, applyOperations } from './executor';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt';
 import { notifyApprovalRequired, notifyFailure, notifySuccess } from '../utils/notifier';
@@ -13,7 +13,11 @@ type ProcessPatchOptions = {
     cwd?: string;
 };
 
-const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, cwd: string): Promise<{ added: number; removed: number }> => {
+const calculateLineChanges = (
+    op: FileOperation,
+    snapshot: FileSnapshot,
+    newContents: Map<string, string>
+): { added: number; removed: number } => {
     if (op.type === 'rename') {
         return { added: 0, removed: 0 };
     }
@@ -23,22 +27,31 @@ const calculateLineChanges = async (op: FileOperation, snapshot: FileSnapshot, c
         const oldLines = oldContent ? oldContent.split('\n') : [];
         return { added: 0, removed: oldLines.length };
     }
+    
+    const newContent = newContents.get(op.path) ?? null;
 
-    // After applyOperations, the new content is on disk
-    const newContent = await readFileContent(op.path, cwd);
     if (oldContent === newContent) return { added: 0, removed: 0 };
 
-    const oldLines = oldContent ? oldContent.split('\n') : [];
-    const newLines = newContent ? newContent.split('\n') : [];
+    const oldLines = oldContent?.split('\n') ?? [];
+    const newLines = newContent?.split('\n') ?? [];
 
     if (oldContent === null || oldContent === '') return { added: newLines.length, removed: 0 };
     if (newContent === null || newContent === '') return { added: 0, removed: oldLines.length };
     
+    // This is a simplified diff, for a more accurate count a real diff algorithm is needed,
+    // but this is fast and good enough for a summary.
     const oldSet = new Set(oldLines);
     const newSet = new Set(newLines);
     
-    const added = newLines.filter(line => !oldSet.has(line)).length;
-    const removed = oldLines.filter(line => !newSet.has(line)).length;
+    let added = 0;
+    for (const line of newLines) {
+        if (!oldSet.has(line)) added++;
+    }
+
+    let removed = 0;
+    for (const line of oldLines) {
+        if (!newSet.has(line)) removed++;
+    }
     
     return { added, removed };
 };
@@ -126,11 +139,11 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 
         // Apply changes
         logger.log('  - Applying file operations...');
-        await applyOperations(operations, cwd);
+        const newContents = await applyOperations(operations, cwd);
         logger.success('  - File operations complete.');
 
-        const opStatsPromises = operations.map(async op => {
-            const stats = await calculateLineChanges(op, snapshot, cwd);
+        const opStats = operations.map(op => {
+            const stats = calculateLineChanges(op, snapshot, newContents);
             if (op.type === 'write') {
                 logger.success(`✔ Written: ${op.path} (+${stats.added}, -${stats.removed})`);
             } else if (op.type === 'delete') {
@@ -140,7 +153,6 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             }
             return stats;
         });
-        const opStats = await Promise.all(opStatsPromises);
 
         // Run post-command
         if (config.postCommand) {

@@ -54,8 +54,6 @@ export const logCommand = async (cwd: string = process.cwd(), outputCapture?: st
         return;
     }
 
-    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
     log('Committed Transactions (most recent first):');
     log('-------------------------------------------');
 

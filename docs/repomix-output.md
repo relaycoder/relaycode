@@ -62,72 +62,6 @@ export const getConfirmation = (question: string): Promise<boolean> => {
 };
 ````
 
-## File: src/utils/notifier.ts
-````typescript
-const notifier = require('toasted-notifier');
-
-const appName = 'Relaycode';
-
-// This is a "fire-and-forget" utility. If notifications fail for any reason
-// (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
-const sendNotification = (options: { title: string; message: string; enableNotifications?: boolean }) => {
-    // Skip notification if explicitly disabled
-    if (options.enableNotifications === false) {
-        return;
-    }
-    
-    try {
-        notifier.notify(
-            {
-                title: options.title,
-                message: options.message,
-                sound: false, // Keep it quiet by default
-                wait: false,
-            },
-            (err: any) => {
-                if (err) {
-                    // Silently ignore errors. This is a non-critical feature.
-                }
-            }
-        );
-    } catch (err) {
-        // Silently ignore errors.
-    }
-};
-
-export const notifyPatchDetected = (projectId: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `New patch detected for project \`${projectId}\`.`,
-        enableNotifications,
-    });
-};
-
-export const notifyApprovalRequired = (projectId: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Action required to approve changes for \`${projectId}\`.`,
-        enableNotifications,
-    });
-};
-
-export const notifySuccess = (uuid: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Patch \`${uuid}\` applied successfully.`,
-        enableNotifications,
-    });
-};
-
-export const notifyFailure = (uuid: string, enableNotifications: boolean = true) => {
-    sendNotification({
-        title: appName,
-        message: `Patch \`${uuid}\` failed and was rolled back.`,
-        enableNotifications,
-    });
-};
-````
-
 ## File: src/commands/apply.ts
 ````typescript
 import { promises as fs } from 'fs';
@@ -165,93 +99,64 @@ export const applyCommand = async (filePath: string, cwd: string = process.cwd()
 };
 ````
 
-## File: src/commands/revert.ts
+## File: src/utils/notifier.ts
 ````typescript
-import { loadConfigOrExit } from '../core/config';
-import { readStateFile } from '../core/state';
-import { processPatch } from '../core/transaction';
-import { logger } from '../utils/logger';
-import { FileOperation, ParsedLLMResponse } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+const notifier = require('toasted-notifier');
 
-export const revertCommand = async (uuidToRevert: string, cwd: string = process.cwd()): Promise<void> => {
-    const config = await loadConfigOrExit(cwd);
+const appName = 'Relaycode';
 
-    // 2. Load the state file for the transaction to revert
-    logger.info(`Attempting to revert transaction: ${uuidToRevert}`);
-    const stateToRevert = await readStateFile(cwd, uuidToRevert);
-    if (!stateToRevert) {
-        logger.error(`Transaction with UUID '${uuidToRevert}' not found or is invalid.`);
+// This is a "fire-and-forget" utility. If notifications fail for any reason
+// (e.g., unsupported OS, DND mode, permissions), it should not crash the app.
+const sendNotification = (options: { title: string; message: string; enableNotifications?: boolean }) => {
+    // Skip notification if explicitly disabled
+    if (options.enableNotifications === false) {
         return;
     }
-
-    // 3. Generate inverse operations
-    const inverse_operations: FileOperation[] = [];
-    // Process operations in reverse order to handle dependencies correctly
-    for (const op of [...stateToRevert.operations].reverse()) {
-        switch (op.type) {
-            case 'rename':
-                inverse_operations.push({ type: 'rename', from: op.to, to: op.from });
-                break;
-            case 'delete':
-                const deletedContent = stateToRevert.snapshot[op.path];
-                if (deletedContent === null || typeof deletedContent === 'undefined') {
-                    logger.warn(`Cannot revert deletion of ${op.path}, original content not found in snapshot. Skipping.`);
-                    continue;
+    
+    try {
+        notifier.notify(
+            {
+                title: options.title,
+                message: options.message,
+                sound: false, // Keep it quiet by default
+                wait: false,
+            },
+            (err: any) => {
+                if (err) {
+                    // Silently ignore errors. This is a non-critical feature.
                 }
-                inverse_operations.push({
-                    type: 'write',
-                    path: op.path,
-                    content: deletedContent,
-                    patchStrategy: 'replace',
-                });
-                break;
-            case 'write':
-                const originalContent = stateToRevert.snapshot[op.path];
-                if (typeof originalContent === 'undefined') {
-                    logger.warn(`Cannot find original state for ${op.path} in snapshot. Skipping revert for this operation.`);
-                    continue;
-                }
-                if (originalContent === null) {
-                    // This was a new file. The inverse is to delete it.
-                    inverse_operations.push({ type: 'delete', path: op.path });
-                } else {
-                    // This was a file modification. The inverse is to restore original content.
-                    inverse_operations.push({
-                        type: 'write',
-                        path: op.path,
-                        content: originalContent,
-                        patchStrategy: 'replace',
-                    });
-                }
-                break;
-        }
+            }
+        );
+    } catch (err) {
+        // Silently ignore errors.
     }
-
-    if (inverse_operations.length === 0) {
-        logger.warn('No operations to revert for this transaction.');
-        return;
-    }
-
-    // 4. Create and process a new "revert" transaction
-    const newUuid = uuidv4();
-    const reasoning = [
-        `Reverting transaction ${uuidToRevert}.`,
-        `Reasoning from original transaction: ${stateToRevert.reasoning.join(' ')}`
-    ];
-
-    const parsedResponse: ParsedLLMResponse = {
-        control: {
-            projectId: config.projectId,
-            uuid: newUuid,
-        },
-        operations: inverse_operations,
-        reasoning,
-    };
-
-    logger.info(`Creating new transaction ${newUuid} to perform the revert.`);
-    await processPatch(config, parsedResponse, { cwd });
 };
+
+const createNotifier = (messageTemplate: (param: string) => string) => {
+    return (param: string, enableNotifications: boolean = true) => {
+        sendNotification({
+            title: appName,
+            message: messageTemplate(param),
+            enableNotifications,
+        });
+    };
+};
+
+export const notifyPatchDetected = createNotifier(
+    (projectId: string) => `New patch detected for project \`${projectId}\`.`
+);
+
+export const notifyApprovalRequired = createNotifier(
+    (projectId: string) => `Action required to approve changes for \`${projectId}\`.`
+);
+
+export const notifySuccess = createNotifier(
+    (uuid: string) => `Patch \`${uuid}\` applied successfully.`
+);
+
+export const notifyFailure = createNotifier(
+    (uuid: string) => `Patch \`${uuid}\` failed and was rolled back.`
+);
 ````
 
 ## File: src/commands/log.ts
@@ -325,6 +230,83 @@ export const logCommand = async (cwd: string = process.cwd(), outputCapture?: st
     transactions.forEach(tx => {
         formatTransactionDetails(tx, { showOperations: true, showSpacing: true }).forEach(line => log(line));
     });
+};
+````
+
+## File: src/commands/revert.ts
+````typescript
+import { loadConfigOrExit } from '../core/config';
+import { readStateFile } from '../core/state';
+import { processPatch } from '../core/transaction';
+import { logger } from '../utils/logger';
+import { FileOperation, ParsedLLMResponse } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+
+export const revertCommand = async (uuidToRevert: string, cwd: string = process.cwd()): Promise<void> => {
+    const config = await loadConfigOrExit(cwd);
+
+    // 2. Load the state file for the transaction to revert
+    logger.info(`Attempting to revert transaction: ${uuidToRevert}`);
+    const stateToRevert = await readStateFile(cwd, uuidToRevert);
+    if (!stateToRevert) {
+        logger.error(`Transaction with UUID '${uuidToRevert}' not found or is invalid.`);
+        return;
+    }
+
+    // 3. Generate inverse operations
+    const inverse_operations = [...stateToRevert.operations]
+        .reverse()
+        .map((op): FileOperation | null => {
+            switch (op.type) {
+                case 'rename':
+                    return { type: 'rename', from: op.to, to: op.from };
+                case 'delete': {
+                    const deletedContent = stateToRevert.snapshot[op.path];
+                    if (deletedContent === null || typeof deletedContent === 'undefined') {
+                        logger.warn(`Cannot revert deletion of ${op.path}, original content not found in snapshot. Skipping.`);
+                        return null;
+                    }
+                    return { type: 'write', path: op.path, content: deletedContent, patchStrategy: 'replace' };
+                }
+                case 'write': {
+                    const originalContent = stateToRevert.snapshot[op.path];
+                    if (typeof originalContent === 'undefined') {
+                        logger.warn(`Cannot find original state for ${op.path} in snapshot. Skipping revert for this operation.`);
+                        return null;
+                    }
+                    if (originalContent === null) {
+                        return { type: 'delete', path: op.path };
+                    } else {
+                        return { type: 'write', path: op.path, content: originalContent, patchStrategy: 'replace' };
+                    }
+                }
+            }
+        })
+        .filter((op): op is FileOperation => op !== null);
+
+    if (inverse_operations.length === 0) {
+        logger.warn('No operations to revert for this transaction.');
+        return;
+    }
+
+    // 4. Create and process a new "revert" transaction
+    const newUuid = uuidv4();
+    const reasoning = [
+        `Reverting transaction ${uuidToRevert}.`,
+        `Reasoning from original transaction: ${stateToRevert.reasoning.join(' ')}`
+    ];
+
+    const parsedResponse: ParsedLLMResponse = {
+        control: {
+            projectId: config.projectId,
+            uuid: newUuid,
+        },
+        operations: inverse_operations,
+        reasoning,
+    };
+
+    logger.info(`Creating new transaction ${newUuid} to perform the revert.`);
+    await processPatch(config, parsedResponse, { cwd });
 };
 ````
 
@@ -993,136 +975,6 @@ export const createClipboardWatcher = (
 }
 ````
 
-## File: src/core/state.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import yaml from 'js-yaml';
-import { StateFile, StateFileSchema } from '../types';
-import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { logger, isEnoentError } from '../utils/logger';
-import { safeRename } from './executor';
-
-const stateDirectoryCache = new Map<string, boolean>();
-
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
-
-export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd), fileName);
-};
-
-export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
-  const fileName = `${uuid}.yml`;
-  return path.join(getStateDirectory(cwd),'undone', fileName);
-};
-
-// Ensure state directory exists with caching for performance
-const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = getStateDirectory(cwd);
-  if (!stateDirectoryCache.has(dirPath)) {
-    await fs.mkdir(dirPath, { recursive: true });
-    stateDirectoryCache.set(dirPath, true);
-  }
-};
-
-export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  const undonePath = getUndoneStateFilePath(cwd,uuid);
-  try {
-    // Only check for a committed state file.
-    // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-    await fs.access(committedPath);
-    return true;
-  } catch (e) {
-    try {
-      await fs.access(undonePath);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-};
-
-export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
-  const validatedState = StateFileSchema.parse(state);
-  const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(cwd, state.uuid, true);
-  
-  // Ensure directory exists (cached)
-  await ensureStateDirectory(cwd);
-  
-  // Write file
-  await fs.writeFile(filePath, yamlString, 'utf-8');
-};
-
-export const commitState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  await safeRename(pendingPath, committedPath);
-};
-
-export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  try {
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    if (isEnoentError(error)) {
-      // Already gone, that's fine.
-      return;
-    }
-    throw error;
-  }
-};
-
-export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  try {
-    const fileContent = await fs.readFile(committedPath, 'utf-8');
-    const yamlContent = yaml.load(fileContent);
-    return StateFileSchema.parse(yamlContent);
-  } catch (error) {
-    // Can be file not found, YAML parsing error, or Zod validation error.
-    // In any case, we can't get the state file.
-    return null;
-  }
-};
-
-export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
-    const stateDir = getStateDirectory(cwd);
-    try {
-        await fs.access(stateDir);
-    } catch (e) {
-        return null; // No state directory, so no transactions
-    }
-
-    const files = await fs.readdir(stateDir);
-    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
-
-    const promises = transactionFiles.map(async (file) => {
-        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
-        if (!stateFile) {
-            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
-        }
-        return stateFile;
-    });
-
-    const results = await Promise.all(promises);
-    return results.filter((sf): sf is StateFile => !!sf);
-}
-
-export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
-    const transactions = await readAllStateFiles(cwd);
-    if (!transactions || transactions.length === 0) {
-        return null;
-    }
-
-    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    return transactions[0] || null;
-};
-````
-
 ## File: src/cli.ts
 ````typescript
 #!/usr/bin/env node
@@ -1199,233 +1051,6 @@ program.parse(process.argv);
 if (!process.argv.slice(2).length) {
     program.outputHelp();
 }
-````
-
-## File: src/core/executor.ts
-````typescript
-import { promises as fs } from 'fs';
-import path from 'path';
-import { FileOperation, FileSnapshot } from '../types';
-import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
-import { getErrorMessage, isEnoentError } from '../utils/logger';
-
-export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
-  try {
-    return await fs.readFile(path.resolve(cwd, filePath), 'utf-8');
-  } catch (error) {
-    if (isEnoentError(error)) {
-      return null; // File doesn't exist
-    }
-    throw error;
-  }
-};
-
-export const writeFileContent = async (filePath: string, content: string, cwd: string = process.cwd()): Promise<void> => {
-  const absolutePath = path.resolve(cwd, filePath);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, content, 'utf-8');
-};
-
-export const deleteFile = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
-  try {
-    await fs.unlink(path.resolve(cwd, filePath));
-  } catch (error) {
-    if (isEnoentError(error)) {
-      // File already deleted, which is fine.
-      return;
-    }
-    throw error;
-  }
-};
-
-export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
-    try {
-        await fs.rename(fromPath, toPath);
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-            await fs.copyFile(fromPath, toPath);
-            await fs.unlink(fromPath);
-        } else {
-            throw error;
-        }
-    }
-};
-
-export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
-  const fromAbsolutePath = path.resolve(cwd, fromPath);
-  const toAbsolutePath = path.resolve(cwd, toPath);
-  await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
-  await safeRename(fromAbsolutePath, toAbsolutePath);
-};
-
-export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
-  const snapshot: FileSnapshot = {};
-  
-  // Process file reads in parallel for better performance
-  const snapshotPromises = filePaths.map(async (filePath) => {
-    try {
-      const absolutePath = path.resolve(cwd, filePath);
-      try {
-        const content = await fs.readFile(absolutePath, 'utf-8');
-        return { path: filePath, content };
-      } catch (error) {
-        if (isEnoentError(error)) {
-          return { path: filePath, content: null }; // File doesn't exist, which is fine.
-        } else {
-          throw error;
-        }
-      }
-    } catch (error) {
-      console.error(`Error creating snapshot for ${filePath}:`, error);
-      throw error;
-    }
-  });
-  
-  const results = await Promise.all(snapshotPromises);
-  
-  // Combine results into snapshot object
-  for (const result of results) {
-    snapshot[result.path] = result.content;
-  }
-  
-  return snapshot;
-};
-
-export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
-  // Operations must be applied sequentially to ensure that if one fails,
-  // we can roll back from a known state.
-  for (const op of operations) {
-    if (op.type === 'delete') {
-      await deleteFile(op.path, cwd);
-      continue;
-    }
-    if (op.type === 'rename') {
-      await renameFile(op.from, op.to, cwd);
-      continue;
-    } 
-    
-    if (op.patchStrategy === 'replace') {
-      await writeFileContent(op.path, op.content, cwd);
-      continue;
-    }
-
-    // For patch strategies, apply them sequentially
-    const originalContent = await readFileContent(op.path, cwd);
-    if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
-      throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
-    }
-
-    try {
-      const diffParams = {
-        originalContent: originalContent ?? '',
-        diffContent: op.content,
-      };
-
-      let result;
-      switch (op.patchStrategy) {
-        case 'new-unified':
-          const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
-          result = await newUnifiedStrategy.applyDiff(diffParams);
-          break;
-        case 'multi-search-replace':
-          result = await multiSearchReplaceService.multiSearchReplaceService.applyDiff(diffParams);
-          break;
-        case 'unified':
-          result = await unifiedDiffService.unifiedDiffService.applyDiff(diffParams.originalContent, diffParams.diffContent);
-          break;
-        default:
-          throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
-      }
-
-      if (result.success) {
-        await writeFileContent(op.path, result.content, cwd);
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (e) {
-      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
-    }
-  }
-};
-
-// Helper to check if a directory is empty
-const isDirectoryEmpty = async (dirPath: string): Promise<boolean> => {
-  try {
-    const files = await fs.readdir(dirPath);
-    return files.length === 0;
-  } catch (error) {
-    // If directory doesn't exist or is not accessible, consider it "not empty"
-    return false;
-  }
-};
-
-// Recursively remove all empty parent directories up to a limit
-const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): Promise<void> => {
-  if (!dirPath.startsWith(rootDir) || dirPath === rootDir) {
-    return;
-  }
-  
-  try {
-    const isEmpty = await isDirectoryEmpty(dirPath);
-    if (isEmpty) {
-      await fs.rmdir(dirPath);
-      // Recursively check parent directory
-      await removeEmptyParentDirectories(path.dirname(dirPath), rootDir);
-    }
-  } catch (error) {
-    // Ignore directory removal errors, but don't continue up the chain
-    if (!(error instanceof Error && 'code' in error &&
-        (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
-      console.warn(`Failed to clean up directory ${dirPath}:`, getErrorMessage(error));
-    }
-  }
-};
-
-export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = process.cwd()): Promise<void> => {
-  const projectRoot = path.resolve(cwd);
-  const entries = Object.entries(snapshot);
-  const directoriesDeleted = new Set<string>();
-
-  // Handle all file operations sequentially to ensure atomicity during rollback
-  for (const [filePath, content] of entries) {
-    const fullPath = path.resolve(cwd, filePath);
-    try {
-      if (content === null) {
-        // If the file didn't exist in the snapshot, make sure it doesn't exist after restore
-        try {
-          await fs.unlink(fullPath);
-          directoriesDeleted.add(path.dirname(fullPath));
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
-            // File or directory already doesn't exist, which is fine
-          } else {
-            throw error;
-          }
-        }
-      } else {
-        // Create directory structure if needed
-        const dir = path.dirname(fullPath);
-        await fs.mkdir(dir, { recursive: true });
-        
-        // Write the original content back to the file
-        await fs.writeFile(fullPath, content, 'utf-8');
-      }
-    } catch (error) {
-      console.error(`Failed to restore ${filePath}:`, error);
-      throw error;
-    }
-  }
-  
-  // After all files are processed, clean up empty directories
-  // Sort directories by depth (deepest first) to clean up nested empty dirs properly
-  const sortedDirs = Array.from(directoriesDeleted)
-    .sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
-  
-  // Process each directory that had files deleted
-  for (const dir of sortedDirs) {
-    await removeEmptyParentDirectories(dir, projectRoot);
-  }
-};
 ````
 
 ## File: src/core/parser.ts
@@ -1642,6 +1267,127 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
         }
         return null;
     }
+};
+````
+
+## File: src/core/state.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import { StateFile, StateFileSchema } from '../types';
+import { STATE_DIRECTORY_NAME } from '../utils/constants';
+import { logger, isEnoentError } from '../utils/logger';
+import { fileExists, safeRename } from './executor';
+
+const stateDirectoryCache = new Map<string, boolean>();
+
+const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+
+export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
+  const fileName = isPending ? `${uuid}.pending.yml` : `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd), fileName);
+};
+
+export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
+  const fileName = `${uuid}.yml`;
+  return path.join(getStateDirectory(cwd),'undone', fileName);
+};
+
+// Ensure state directory exists with caching for performance
+const ensureStateDirectory = async (cwd: string): Promise<void> => {
+  const dirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(dirPath)) {
+    await fs.mkdir(dirPath, { recursive: true });
+    stateDirectoryCache.set(dirPath, true);
+  }
+};
+
+export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  const undonePath = getUndoneStateFilePath(cwd, uuid);
+  // Check if a transaction has been committed or undone.
+  // This allows re-processing a transaction that failed and left an orphaned .pending.yml
+  // because we don't check for `.pending.yml` files.
+  return (await fileExists(committedPath)) || (await fileExists(undonePath));
+};
+
+export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
+  const validatedState = StateFileSchema.parse(state);
+  const yamlString = yaml.dump(validatedState);
+  const filePath = getStateFilePath(cwd, state.uuid, true);
+  
+  // Ensure directory exists (cached)
+  await ensureStateDirectory(cwd);
+  
+  // Write file
+  await fs.writeFile(filePath, yamlString, 'utf-8');
+};
+
+export const commitState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  await safeRename(pendingPath, committedPath);
+};
+
+export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
+  const pendingPath = getStateFilePath(cwd, uuid, true);
+  try {
+    await fs.unlink(pendingPath);
+  } catch (error) {
+    if (isEnoentError(error)) {
+      // Already gone, that's fine.
+      return;
+    }
+    throw error;
+  }
+};
+
+export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
+  const committedPath = getStateFilePath(cwd, uuid, false);
+  try {
+    const fileContent = await fs.readFile(committedPath, 'utf-8');
+    const yamlContent = yaml.load(fileContent);
+    return StateFileSchema.parse(yamlContent);
+  } catch (error) {
+    // Can be file not found, YAML parsing error, or Zod validation error.
+    // In any case, we can't get the state file.
+    return null;
+  }
+};
+
+export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
+        return null; // No state directory, so no transactions
+    }
+
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
+
+    const promises = transactionFiles.map(async (file) => {
+        const stateFile = await readStateFile(cwd, file.replace('.yml', ''));
+        if (!stateFile) {
+            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
+        }
+        return stateFile;
+    });
+
+    const results = await Promise.all(promises);
+    return results.filter((sf): sf is StateFile => !!sf);
+}
+
+export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
+    const transactions = await readAllStateFiles(cwd);
+    if (!transactions || transactions.length === 0) {
+        return null;
+    }
+
+    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return transactions[0] || null;
 };
 ````
 
@@ -1901,6 +1647,242 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
     }
   };
   return { stop: stopAll };
+};
+````
+
+## File: src/core/executor.ts
+````typescript
+import { promises as fs } from 'fs';
+import path from 'path';
+import { FileOperation, FileSnapshot } from '../types';
+import { newUnifiedDiffStrategyService, multiSearchReplaceService, unifiedDiffService } from 'diff-apply';
+import { getErrorMessage, isEnoentError } from '../utils/logger';
+
+export const readFileContent = async (filePath: string, cwd: string = process.cwd()): Promise<string | null> => {
+  try {
+    return await fs.readFile(path.resolve(cwd, filePath), 'utf-8');
+  } catch (error) {
+    if (isEnoentError(error)) {
+      return null; // File doesn't exist
+    }
+    throw error;
+  }
+};
+
+export const writeFileContent = async (filePath: string, content: string, cwd: string = process.cwd()): Promise<void> => {
+  const absolutePath = path.resolve(cwd, filePath);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, content, 'utf-8');
+};
+
+export const deleteFile = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
+  try {
+    await fs.unlink(path.resolve(cwd, filePath));
+  } catch (error) {
+    if (isEnoentError(error)) {
+      // File already deleted, which is fine.
+      return;
+    }
+    throw error;
+  }
+};
+
+export const fileExists = async (filePath: string, cwd: string = process.cwd()): Promise<boolean> => {
+  try {
+    await fs.access(path.resolve(cwd, filePath));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
+    try {
+        await fs.rename(fromPath, toPath);
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+            await fs.copyFile(fromPath, toPath);
+            await fs.unlink(fromPath);
+        } else {
+            throw error;
+        }
+    }
+};
+
+export const renameFile = async (fromPath: string, toPath: string, cwd: string = process.cwd()): Promise<void> => {
+  const fromAbsolutePath = path.resolve(cwd, fromPath);
+  const toAbsolutePath = path.resolve(cwd, toPath);
+  await fs.mkdir(path.dirname(toAbsolutePath), { recursive: true });
+  await safeRename(fromAbsolutePath, toAbsolutePath);
+};
+
+export const createSnapshot = async (filePaths: string[], cwd: string = process.cwd()): Promise<FileSnapshot> => {
+  const snapshot: FileSnapshot = {};
+  
+  // Process file reads in parallel for better performance
+  const snapshotPromises = filePaths.map(async (filePath) => {
+    try {
+      const absolutePath = path.resolve(cwd, filePath);
+      try {
+        const content = await fs.readFile(absolutePath, 'utf-8');
+        return { path: filePath, content };
+      } catch (error) {
+        if (isEnoentError(error)) {
+          return { path: filePath, content: null }; // File doesn't exist, which is fine.
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error(`Error creating snapshot for ${filePath}:`, error);
+      throw error;
+    }
+  });
+  
+  const results = await Promise.all(snapshotPromises);
+  
+  // Combine results into snapshot object
+  for (const result of results) {
+    snapshot[result.path] = result.content;
+  }
+  
+  return snapshot;
+};
+
+export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<void> => {
+  // Operations must be applied sequentially to ensure that if one fails,
+  // we can roll back from a known state.
+  for (const op of operations) {
+    if (op.type === 'delete') {
+      await deleteFile(op.path, cwd);
+      continue;
+    }
+    if (op.type === 'rename') {
+      await renameFile(op.from, op.to, cwd);
+      continue;
+    } 
+    
+    if (op.patchStrategy === 'replace') {
+      await writeFileContent(op.path, op.content, cwd);
+      continue;
+    }
+
+    // For patch strategies, apply them sequentially
+    const originalContent = await readFileContent(op.path, cwd);
+    if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
+      throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
+    }
+
+    try {
+      const diffParams = {
+        originalContent: originalContent ?? '',
+        diffContent: op.content,
+      };
+
+      let result;
+      switch (op.patchStrategy) {
+        case 'new-unified':
+          const newUnifiedStrategy = newUnifiedDiffStrategyService.newUnifiedDiffStrategyService.create(0.95);
+          result = await newUnifiedStrategy.applyDiff(diffParams);
+          break;
+        case 'multi-search-replace':
+          result = await multiSearchReplaceService.multiSearchReplaceService.applyDiff(diffParams);
+          break;
+        case 'unified':
+          result = await unifiedDiffService.unifiedDiffService.applyDiff(diffParams.originalContent, diffParams.diffContent);
+          break;
+        default:
+          throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
+      }
+
+      if (result.success) {
+        await writeFileContent(op.path, result.content, cwd);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (e) {
+      throw new Error(`Error applying patch for ${op.path} with strategy ${op.patchStrategy}: ${getErrorMessage(e)}`);
+    }
+  }
+};
+
+// Helper to check if a directory is empty
+const isDirectoryEmpty = async (dirPath: string): Promise<boolean> => {
+  try {
+    const files = await fs.readdir(dirPath);
+    return files.length === 0;
+  } catch (error) {
+    // If directory doesn't exist or is not accessible, consider it "not empty"
+    return false;
+  }
+};
+
+// Recursively remove all empty parent directories up to a limit
+const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): Promise<void> => {
+  if (!dirPath.startsWith(rootDir) || dirPath === rootDir) {
+    return;
+  }
+  
+  try {
+    const isEmpty = await isDirectoryEmpty(dirPath);
+    if (isEmpty) {
+      await fs.rmdir(dirPath);
+      // Recursively check parent directory
+      await removeEmptyParentDirectories(path.dirname(dirPath), rootDir);
+    }
+  } catch (error) {
+    // Ignore directory removal errors, but don't continue up the chain
+    if (!(error instanceof Error && 'code' in error &&
+        (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
+      console.warn(`Failed to clean up directory ${dirPath}:`, getErrorMessage(error));
+    }
+  }
+};
+
+export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = process.cwd()): Promise<void> => {
+  const projectRoot = path.resolve(cwd);
+  const entries = Object.entries(snapshot);
+  const directoriesDeleted = new Set<string>();
+
+  // Handle all file operations sequentially to ensure atomicity during rollback
+  for (const [filePath, content] of entries) {
+    const fullPath = path.resolve(cwd, filePath);
+    try {
+      if (content === null) {
+        // If the file didn't exist in the snapshot, make sure it doesn't exist after restore
+        try {
+          await fs.unlink(fullPath);
+          directoriesDeleted.add(path.dirname(fullPath));
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+            // File or directory already doesn't exist, which is fine
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        // Create directory structure if needed
+        const dir = path.dirname(fullPath);
+        await fs.mkdir(dir, { recursive: true });
+        
+        // Write the original content back to the file
+        await fs.writeFile(fullPath, content, 'utf-8');
+      }
+    } catch (error) {
+      console.error(`Failed to restore ${filePath}:`, error);
+      throw error;
+    }
+  }
+  
+  // After all files are processed, clean up empty directories
+  // Sort directories by depth (deepest first) to clean up nested empty dirs properly
+  const sortedDirs = Array.from(directoriesDeleted)
+    .sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
+  
+  // Process each directory that had files deleted
+  for (const dir of sortedDirs) {
+    await removeEmptyParentDirectories(dir, projectRoot);
+  }
 };
 ````
 

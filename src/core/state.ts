@@ -3,7 +3,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { STATE_DIRECTORY_NAME } from '../utils/constants';
-import { logger, isEnoentError } from '../utils/logger';
+import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
 import { fileExists, safeRename } from './executor';
 
 const stateDirectoryCache = new Map<string, boolean>();
@@ -74,9 +74,14 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
   try {
     const fileContent = await fs.readFile(committedPath, 'utf-8');
     const yamlContent = yaml.load(fileContent);
-    return StateFileSchema.parse(yamlContent);
+    const parsed = StateFileSchema.safeParse(yamlContent);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    logger.debug(`Could not parse state file ${committedPath}: ${parsed.error.message}`);
+    return null;
   } catch (error) {
-    // Can be file not found, YAML parsing error, or Zod validation error.
+    // Can be file not found or YAML parsing error.
     // In any case, we can't get the state file.
     return null;
   }
@@ -102,16 +107,71 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     });
 
     const results = await Promise.all(promises);
-    return results.filter((sf): sf is StateFile => !!sf);
+    const validResults = results.filter((sf): sf is StateFile => !!sf);
+
+    // Sort transactions by date, most recent first
+    validResults.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return validResults;
 }
 
 export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
-    const transactions = await readAllStateFiles(cwd);
-    if (!transactions || transactions.length === 0) {
+    const stateDir = getStateDirectory(cwd);
+    try {
+        await fs.access(stateDir);
+    } catch (e) {
         return null;
     }
 
-    transactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const files = await fs.readdir(stateDir);
+    const transactionFiles = files.filter(f => f.endsWith('.yml') && !f.endsWith('.pending.yml'));
 
-    return transactions[0] || null;
+    if (transactionFiles.length === 0) {
+        return null;
+    }
+
+    // Read creation date from each file without parsing the whole thing.
+    // This is much faster than reading and parsing the full YAML for every file.
+    const filesWithDates = await Promise.all(
+        transactionFiles.map(async (file) => {
+            const filePath = path.join(stateDir, file);
+            let createdAt: Date | null = null;
+            try {
+                // Read only the first 512 bytes to find `createdAt`. This is an optimization.
+                const fileHandle = await fs.open(filePath, 'r');
+                const buffer = Buffer.alloc(512);
+                await fileHandle.read(buffer, 0, 512, 0);
+                await fileHandle.close();
+                const content = buffer.toString('utf-8');
+                // Extract date from a line like 'createdAt: 2023-01-01T00:00:00.000Z'
+                const match = content.match(/^createdAt:\s*['"]?(.+?)['"]?$/m);
+                if (match && match[1]) {
+                    createdAt = new Date(match[1]);
+                }
+            } catch (error) {
+                if (!isEnoentError(error)) {
+                  logger.debug(`Could not read partial date from ${file}: ${getErrorMessage(error)}`);
+                }
+            }
+            return { file, createdAt };
+        })
+    );
+
+    const validFiles = filesWithDates.filter(f => f.createdAt instanceof Date) as { file: string; createdAt: Date }[];
+
+    if (validFiles.length === 0) {
+        // Fallback for safety, though it should be rare.
+        const transactions = await readAllStateFiles(cwd);
+        return transactions?.[0] ?? null;
+    }
+
+    validFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const latestFile = validFiles[0];
+    if (!latestFile) {
+        return null;
+    }
+
+    // Now read the full content of only the latest file
+    return readStateFile(cwd, latestFile.file.replace('.yml', ''));
 };
