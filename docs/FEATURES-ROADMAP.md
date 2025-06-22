@@ -1,3 +1,72 @@
+### Automated Correction Prompting (The "Feedback Loop")
+
+*   **Problem:** When a patch fails the linter or tests, the developer must manually copy the error message, switch back to the LLM, and construct a new prompt to ask for a fix. This is a slow and repetitive part of the workflow.
+*   **Proposal:**
+    1.  When a transaction fails (`postCommand` error, linter failure), `relaycode` doesn't just roll back. It enters a "correction" state.
+    2.  It automatically captures the `stdout` and `stderr` from the failed command.
+    3.  It then constructs a new, optimized prompt and copies it to the clipboard for the user.
+        *   The prompt would be structured like: "The following patch was attempted but failed. **Reasoning:** `{original reasoning}`. **Patch:** `{original patch}`. **Error:** `{captured error log}`. Please analyze the error and provide a corrected patch."
+    4.  The developer's next action is simply to paste this perfectly-formed correction prompt into the LLM.
+*   **Benefit:** This closes the feedback loop between the tool and the LLM, making the process of fixing faulty patches nearly instantaneous and removing tedious manual work for the developer.
+
+#### Analytics & Project Insights (`relay stats`)
+
+*   **Problem:** The transaction history in the `.relaycode` directory is a rich dataset of the project's evolution via AI, but it's currently unused.
+*   **Proposal:** Create a `relay stats` command that analyzes the transaction log to provide insights.
+    1.  **Code Hotspots:** Identify which files are most frequently modified by the LLM. This can indicate areas of the codebase that are complex, brittle, or ripe for a major refactor.
+    2.  **AI Reliability Score:** Calculate metrics like:
+        *   Transaction success rate (committed vs. rolled back).
+        *   Approval rate (manual approvals vs. rejections).
+        *   Average error count post-apply.
+    3.  **Strategy Effectiveness:** Show which patch strategies (`replace`, `new-unified`, etc.) are most commonly used and which ones lead to the most successful commits.
+    *   **Output:** This could generate a simple terminal report or even a `stats.html` file with charts, giving the team a dashboard to understand how AI is impacting their codebase.
+
+#### Plugin Architecture
+*   **Problem:** All functionality is currently hard-coded. Adding new features or a different diffing engine requires modifying the core.
+*   **Proposal:**
+    *   Refactor the core logic to emit events (e.g., `onPatchReceived`, `beforeApply`, `afterCommit`, `onRollback`).
+    *   Create a plugin system where a user can install a package (e.g., `relay-plugin-slack`) and add it to their config.
+    *   The plugin would register listeners for these events. The Slack plugin could listen for `afterCommit` and `onRollback` to send notifications. A custom diffing plugin could register a new patch strategy.
+
+#### Intelligent Pre-Command Execution
+*   **Problem:** The `preCommand` runs for every transaction, which might be unnecessary.
+*   **Proposal:**
+    *   Allow the `preCommand` in the config to be an object that maps file extensions to commands.
+        ```json
+        "preCommand": {
+          "*.ts": "bun check",
+          "*.py": "python -m mypy ."
+        }
+        ```
+    *   Before running a transaction, `relaycode` would inspect the file extensions of the affected files and only run the relevant commands.
+
+#### Interactive Log and Enhanced Undo/Redo
+*   **Problem:** `undo` only reverts the very last transaction. The `log` command is read-only.
+*   **Proposal:**
+    1.  **Interactive `log`:** Enhance the `log` command to show a numbered list of recent transactions.
+    2.  **Targeted `undo`:** Allow `undo` to take a transaction UUID or the number from the interactive log (`relay undo <uuid>` or `relay undo 3`).
+    3.  **`redo` Command:** Since the `undo` command cleverly moves the undone transaction to a `undone/` directory, you can easily implement a `redo` command. It would find the latest file in `undone/`, move it back to the main state directory, and re-apply the snapshot from *before* that transaction (which is stored in its `snapshot` property).
+
+#### Partial Patch Application
+Problem: Sometimes an LLM response contains multiple, independent changes in different files. One change might be good, while another has a bug. Currently, it's all-or-nothing.
+Proposal: In manual approval mode, allow the user to select which file operations from a patch to apply.
+When approval is requested, list each file operation with a checkbox (using a library like inquirer).
+The user can select the operations they want.
+The transaction is then processed with only the approved operations, and the state file is saved accordingly.
+
+#### Partial Patch Application
+*   **Problem:** Sometimes an LLM response contains multiple, independent changes in different files. One change might be good, while another has a bug. Currently, it's all-or-nothing.
+*   **Proposal:** In manual approval mode, allow the user to select which file operations from a patch to apply.
+    *   When approval is requested, list each file operation with a checkbox (using a library like `inquirer`).
+    *   The user can select the operations they want.
+    *   The transaction is then processed with only the approved operations, and the state file is saved accordingly.
+
+#### Improve Windows Clipboard Handling
+*   **Problem:** The `src/core/clipboard.ts` file contains custom logic to copy a Windows executable to a local `fallbacks` directory. This can be fragile, might be flagged by antivirus software, and adds complexity.
+*   **Proposal:**
+    *   Investigate if newer versions of `clipboardy` or alternative cross-platform clipboard libraries have improved native Windows support, potentially removing the need for the bundled `.exe`.
+    *   If the executable is still necessary, consider adding it to the `files` array in `package.json` and using a more robust method to locate it within the `node_modules` directory rather than copying it.
+
 #### ✅ DONE: add version to relay
 #### VERIFY: Transaction rolleed back still not really making all affected files to original state especially the failed file.
 #### VERIFY: shorhands commands not working, also commands without -- not working.
