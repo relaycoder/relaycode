@@ -22,6 +22,12 @@ export const formatTransactionDetails = (
         lines.push('  Reasoning:');
         tx.reasoning.forEach(r => lines.push(`    - ${r}`));
     }
+    if (tx.promptSummary) {
+        lines.push(`  Prompt Summary: ${tx.promptSummary}`);
+    }
+    if (tx.gitCommitMsg) {
+        lines.push(`  Git Commit: ${tx.gitCommitMsg}`);
+    }
     if (options.showOperations && tx.operations && tx.operations.length > 0) {
         lines.push('  Changes:');
         tx.operations.forEach(op => lines.push(`    - ${opToString(op)}`));

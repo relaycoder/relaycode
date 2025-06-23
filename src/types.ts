@@ -51,6 +51,8 @@ export const ControlYamlSchema = z.object({
   projectId: z.string(),
   uuid: z.string().uuid(),
   changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
+  gitCommitMsg: z.string().optional(),
+  promptSummary: z.string().optional(),
 });
 export type ControlYaml = z.infer<typeof ControlYamlSchema>;
 
@@ -75,6 +77,8 @@ export const StateFileSchema = z.object({
   operations: z.array(FileOperationSchema),
   snapshot: FileSnapshotSchema,
   approved: z.boolean(),
+  gitCommitMsg: z.string().optional(),
+  promptSummary: z.string().optional(),
 });
 export type StateFile = z.infer<typeof StateFileSchema>;
 

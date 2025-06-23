@@ -138,7 +138,15 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     const snapshot = await createSnapshot(affectedFilePaths, cwd);
     
     const stateFile: StateFile = {
-        uuid, projectId, createdAt: new Date().toISOString(), reasoning, operations, snapshot, approved: false,
+        uuid,
+        projectId,
+        createdAt: new Date().toISOString(),
+        reasoning,
+        operations,
+        snapshot,
+        approved: false,
+        gitCommitMsg: control.gitCommitMsg,
+        promptSummary: control.promptSummary,
     };
 
     try {

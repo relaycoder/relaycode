@@ -7,6 +7,7 @@ import { COMMAND_NAME } from './utils/constants';
 import { undoCommand } from './commands/undo';
 import { revertCommand } from './commands/revert';
 import { applyCommand } from './commands/apply';
+import { gitCommitCommand } from './commands/git-commit';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -67,6 +68,14 @@ commands.forEach(cmdInfo => {
 
   command.action(cmdInfo.action);
 });
+
+// Git command group
+const git = program.command('git').description('Git related commands');
+git
+    .command('commit')
+    .alias('c')
+    .description('Commits the last transaction using the message from the transaction log.')
+    .action(() => gitCommitCommand(process.cwd()));
 
 program.parse(process.argv);
 

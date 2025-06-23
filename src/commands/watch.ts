@@ -143,6 +143,8 @@ Repeat this block for each replacement.
       - edit: src/main.ts
       - new: src/components/Button.tsx
       - delete: src/utils/old-helper.ts
+    promptSummary: "A brief summary of my request."
+    gitCommitMsg: "feat: A concise, imperative git commit message."
     \`\`\`
 `;
     
