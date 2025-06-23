@@ -14,7 +14,7 @@ const opToString = (op: FileOperation): string => {
 
 export const formatTransactionDetails = (
     tx: StateFile,
-    options: { showOperations?: boolean, showSpacing?: boolean } = {}
+    options: { showOperations?: boolean, showSpacing?: boolean, showReasoning?: boolean } = {}
 ): string[] => {
     const lines: string[] = [];
     lines.push(`- ${chalk.bold('UUID')}: ${chalk.gray(tx.uuid)}`);
@@ -25,7 +25,7 @@ export const formatTransactionDetails = (
     if (tx.gitCommitMsg) {
         lines.push(`  ${chalk.bold('Git Commit')}: "${tx.gitCommitMsg}"`);
     }
-    if (tx.reasoning && tx.reasoning.length > 0) {
+    if ((options.showReasoning ?? true) && tx.reasoning && tx.reasoning.length > 0) {
         lines.push(`  ${chalk.bold('Reasoning')}:`);
         tx.reasoning.forEach(r => lines.push(`    - ${r}`));
     }
@@ -70,6 +70,6 @@ export const logCommand = async (cwd: string = process.cwd(), outputCapture?: st
     }
 
     transactions.forEach(tx => {
-        formatTransactionDetails(tx, { showOperations: true, showSpacing: true }).forEach(line => log(line));
+        formatTransactionDetails(tx, { showOperations: true, showSpacing: true, showReasoning: false }).forEach(line => log(line));
     });
 };

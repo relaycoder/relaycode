@@ -43,7 +43,7 @@ const program = new Command();
 
 program
   .name(COMMAND_NAME)
-  .version(version)
+  .version(version, '-v, --version')
   .description('A developer assistant that automates applying code changes from LLMs.');
 
 const commands = [

@@ -1,4 +1,6 @@
+#### some cli aliases just doesnt work like relaycode -v etc
 
+#### do not show reasoning in relay log cli command. replace by showing promptSummary
 
 #### VERIFY: this field in .relaycode log should be placed below created date
 gitCommitMsg:
