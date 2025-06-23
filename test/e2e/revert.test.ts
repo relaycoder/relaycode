@@ -45,7 +45,7 @@ describe('e2e/revert', () => {
         expect(contentAfterPatch).toBe(modifiedContent);
 
         // 2. Revert T1
-        await revertCommand(t1_uuid, context.testDir.path);
+        await revertCommand(t1_uuid, context.testDir.path, async () => true);
 
         // 3. Verify changes
         const contentAfterRevert = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
@@ -87,7 +87,7 @@ describe('e2e/revert', () => {
         );
         
         // 2. Revert T1
-        await revertCommand(t1_uuid, context.testDir.path);
+        await revertCommand(t1_uuid, context.testDir.path, async () => true);
 
         // 3. Verify rollback
         const restoredModifyContent = await fs.readFile(path.join(context.testDir.path, fileToModify), 'utf-8');
@@ -114,7 +114,7 @@ describe('e2e/revert', () => {
         const fakeUuid = '00000000-0000-0000-0000-000000000000';
         await revertCommand(fakeUuid, context.testDir.path);
         
-        expect(errorLog).toContain(`Transaction with UUID '${fakeUuid}' not found`);
+        expect(errorLog).toContain(`Could not find transaction with UUID '${fakeUuid}'`);
     });
 
     it('should be possible to revert a revert', async () => {
@@ -132,14 +132,14 @@ describe('e2e/revert', () => {
         expect(content).toBe(v2);
 
         // 2. Revert T1 to go from v2 -> v1 (T2)
-        await revertCommand(t1_uuid, context.testDir.path);
+        await revertCommand(t1_uuid, context.testDir.path, async () => true);
         content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(content).toBe(v1);
 
         // 3. Get T2's UUID and revert it to go from v1 -> v2 (T3)
         const t2 = await findLatestStateFile(context.testDir.path);
         expect(t2).not.toBeNull();
-        await revertCommand(t2!.uuid, context.testDir.path);
+        await revertCommand(t2!.uuid, context.testDir.path, async () => true);
         content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(content).toBe(v2);
 
@@ -147,5 +147,53 @@ describe('e2e/revert', () => {
         const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
         const files = (await fs.readdir(stateDir)).filter(f => f.endsWith('.yml'));
         expect(files.length).toBe(3);
+    });
+
+    describe('revert by index/default', () => {
+        const testFile = 'src/index.ts';
+        const v1 = 'v1';
+        const v2 = 'v2';
+        const v3 = 'v3';
+
+        beforeEach(async () => {
+            // Create a history of transactions
+            await createTestFile(context.testDir.path, testFile, v1);
+            // T1: v1 -> v2
+            await runProcessPatch(context, {}, [{ type: 'edit', path: testFile, content: v2 }]);
+            // T2: v2 -> v3
+            await runProcessPatch(context, {}, [{ type: 'edit', path: testFile, content: v3 }]);
+
+            // Verify starting state
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v3);
+        });
+
+        it('should revert the latest transaction when no identifier is provided', async () => {
+            // Revert T2 (latest)
+            await revertCommand(undefined, context.testDir.path, async () => true);
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v2);
+        });
+
+        it('should revert the latest transaction when identifier is "1"', async () => {
+            // Revert T2 (latest)
+            await revertCommand('1', context.testDir.path, async () => true);
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v2);
+        });
+
+        it('should revert the 2nd latest transaction when identifier is "2"', async () => {
+            // Revert T1 (2nd latest)
+            await revertCommand('2', context.testDir.path, async () => true);
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v1);
+        });
+
+        it('should log an error for an invalid index', async () => {
+            let errorLog = '';
+            (logger as any).error = (msg: string) => { errorLog = msg; };
+            await revertCommand('99', context.testDir.path, async () => true);
+            expect(errorLog).toContain('Transaction not found. Only 2 transactions exist.');
+        });
     });
 });

@@ -23,7 +23,8 @@
     "build": "bun run clean && bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target node",
     "test": "bun test",
     "dev": "bun run src/cli.ts",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "bundle": "repomix && sudo rm -rf docs/repomix-output.md && clear"
   },
   "dependencies": {
     "chalk": "^5.4.1",

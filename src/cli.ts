@@ -2,10 +2,9 @@
 import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { watchCommand } from './commands/watch';
-import { logCommand } from './commands/log';
 import { COMMAND_NAME } from './utils/constants';
-import { undoCommand } from './commands/undo';
 import { revertCommand } from './commands/revert';
+import { logCommand } from './commands/log';
 import { applyCommand } from './commands/apply';
 import { gitCommitCommand } from './commands/git-commit';
 import { createRequire } from 'node:module';
@@ -52,8 +51,7 @@ const commands = [
   { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', action: () => { watchCommand(process.cwd()); } },
   { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: (filePath: string) => applyCommand(filePath) },
   { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: () => logCommand(process.cwd()) },
-  { name: 'undo', alias: 'u', description: 'Reverts the last successfully committed transaction.', action: () => undoCommand(process.cwd()) },
-  { name: 'revert', alias: 'r', description: 'Reverts a committed transaction by its UUID.', args: { syntax: '<uuid>', description: 'The UUID of the transaction to revert.' }, action: (uuid: string) => revertCommand(uuid) },
+  { name: 'revert', alias: 'u', description: 'Reverts a transaction. Defaults to the last one.', args: { syntax: '[uuid_or_index]', description: 'The UUID or index (e.g., 1, 2) of the transaction to revert.' }, action: (identifier: string) => revertCommand(identifier) },
 ];
 
 commands.forEach(cmdInfo => {

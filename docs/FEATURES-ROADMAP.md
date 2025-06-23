@@ -1,5 +1,9 @@
 
 
+#### this field in .relaycode log should be placed below created date
+gitCommitMsg:
+promptSummary:
+
 
 #### all-or-nothing vs
 #### DONE: do not fire notification on skipped uuid
@@ -10,10 +14,10 @@ Valid patch detected for project 'relaycode'. Processing...
 Skipping patch: uuid 'a6311de1-b844-4861-9c8e-a9d70de792f4' has already been processed.
 
 
-#### relay git commit
+#### ✅ DONE: relay git commit
 #### VERIFY: make sure clipboard is working in linux
 #### ✅ DONE: should be abble to parse yaml without codefence
-#### user prompt summary in yaml for .relaycode log
+#### ✅ DONE: user prompt summary in yaml for .relaycode log
 #### words level chalk
 
 #### Automated Correction Prompting (The "Feedback Loop")

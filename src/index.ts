@@ -27,7 +27,6 @@ export { processPatch } from './core/transaction';
 export { initCommand } from './commands/init';
 export { watchCommand } from './commands/watch';
 export { logCommand } from './commands/log';
-export { undoCommand } from './commands/undo';
 export { revertCommand } from './commands/revert';
 export { applyCommand } from './commands/apply';
 export { gitCommitCommand } from './commands/git-commit';
