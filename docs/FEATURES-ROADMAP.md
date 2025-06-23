@@ -1,11 +1,9 @@
-#### some cli aliases just doesnt work like relaycode -v etc
+#### ✅ DONE: some cli aliases just doesnt work like relaycode -v etc
+#### ✅ DONE: do not show reasoning in relay log cli command. replace by showing promptSummary
 
-#### do not show reasoning in relay log cli command. replace by showing promptSummary
-
-#### VERIFY: this field in .relaycode log should be placed below created date
+#### this field in .relaycode log should be placed below created date
 gitCommitMsg:
 promptSummary:
-
 
 #### all-or-nothing vs
 #### DONE: do not fire notification on skipped uuid

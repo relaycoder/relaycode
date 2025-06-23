@@ -73,12 +73,12 @@ export const StateFileSchema = z.object({
   uuid: z.string().uuid(),
   projectId: z.string(),
   createdAt: z.string().datetime(),
+  gitCommitMsg: z.string().optional(),
+  promptSummary: z.string().optional(),
   reasoning: z.array(z.string()),
   operations: z.array(FileOperationSchema),
   snapshot: FileSnapshotSchema,
   approved: z.boolean(),
-  gitCommitMsg: z.string().optional(),
-  promptSummary: z.string().optional(),
 });
 export type StateFile = z.infer<typeof StateFileSchema>;
 

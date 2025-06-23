@@ -142,12 +142,12 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         uuid,
         projectId,
         createdAt: new Date().toISOString(),
+        gitCommitMsg: control.gitCommitMsg,
+        promptSummary: control.promptSummary,
         reasoning,
         operations,
         snapshot,
         approved: false,
-        gitCommitMsg: control.gitCommitMsg,
-        promptSummary: control.promptSummary,
     };
 
     try {
