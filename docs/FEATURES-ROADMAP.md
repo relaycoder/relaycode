@@ -1,6 +1,6 @@
 
 
-#### this field in .relaycode log should be placed below created date
+#### VERIFY: this field in .relaycode log should be placed below created date
 gitCommitMsg:
 promptSummary:
 

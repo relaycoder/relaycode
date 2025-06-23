@@ -18,15 +18,15 @@ export const formatTransactionDetails = (
     const lines: string[] = [];
     lines.push(`- UUID: ${tx.uuid}`);
     lines.push(`  Date: ${new Date(tx.createdAt).toLocaleString()}`);
-    if (tx.reasoning && tx.reasoning.length > 0) {
-        lines.push('  Reasoning:');
-        tx.reasoning.forEach(r => lines.push(`    - ${r}`));
-    }
     if (tx.promptSummary) {
         lines.push(`  Prompt Summary: ${tx.promptSummary}`);
     }
     if (tx.gitCommitMsg) {
         lines.push(`  Git Commit: ${tx.gitCommitMsg}`);
+    }
+    if (tx.reasoning && tx.reasoning.length > 0) {
+        lines.push('  Reasoning:');
+        tx.reasoning.forEach(r => lines.push(`    - ${r}`));
     }
     if (options.showOperations && tx.operations && tx.operations.length > 0) {
         lines.push('  Changes:');
