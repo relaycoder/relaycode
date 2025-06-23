@@ -3,24 +3,25 @@ import path from 'path';
 import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
 import { logger, getErrorMessage, isEnoentError } from '../utils/logger';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME, GITIGNORE_COMMENT } from '../utils/constants';
+import chalk from 'chalk';
 
 const getInitMessage = (projectId: string): string => `
-✅ relaycode has been initialized for this project.
+${chalk.green('✅ relaycode has been initialized for this project.')}
 
-Configuration file created: ${CONFIG_FILE_NAME}
+Configuration file created: ${chalk.cyan(CONFIG_FILE_NAME)}
 
-Project ID: ${projectId}
+Project ID: ${chalk.cyan(projectId)}
 
-Next steps:
-1. (Optional) Open ${CONFIG_FILE_NAME} to customize settings like 'preferredStrategy' to control how the AI generates code patches.
-   - 'auto' (default): The AI can choose the best patch strategy.
-   - 'new-unified': Forces the AI to use diffs, great for most changes.
-   - 'replace': Forces the AI to replace entire files, good for new files or small changes.
-   - 'multi-search-replace': Forces the AI to perform precise search and replace operations.
+${chalk.bold('Next steps:')}
+${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME)} to customize settings like ${chalk.yellow("'preferredStrategy'")} to control how the AI generates code patches.
+   - ${chalk.yellow("'auto'")} (default): The AI can choose the best patch strategy.
+   - ${chalk.yellow("'new-unified'")}: Forces the AI to use diffs, great for most changes.
+   - ${chalk.yellow("'replace'")}: Forces the AI to replace entire files, good for new files or small changes.
+   - ${chalk.yellow("'multi-search-replace'")}: Forces the AI to perform precise search and replace operations.
 
-2. Run 'relay watch' in your terminal. This will start the service and display the system prompt tailored to your configuration.
+${chalk.gray('2.')} Run ${chalk.magenta("'relay watch'")} in your terminal. This will start the service and display the system prompt tailored to your configuration.
 
-3. Copy the system prompt provided by 'relay watch' and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
+${chalk.gray('3.')} Copy the system prompt provided by ${chalk.magenta("'relay watch'")} and paste it into your AI assistant's "System Prompt" or "Custom Instructions".
 `;
 
 
@@ -33,14 +34,14 @@ const updateGitignore = async (cwd: string): Promise<void> => {
         if (!content.includes(STATE_DIRECTORY_NAME)) {
             content += entry;
             await fs.writeFile(gitignorePath, content);
-            logger.info(`Updated ${GITIGNORE_FILE_NAME} to ignore ${STATE_DIRECTORY_NAME}/`);
+            logger.info(`Updated ${chalk.cyan(GITIGNORE_FILE_NAME)} to ignore ${chalk.cyan(STATE_DIRECTORY_NAME)}/`);
         }
     } catch (error) {
         if (isEnoentError(error)) {
             await fs.writeFile(gitignorePath, entry.trim());
-            logger.info(`Created ${GITIGNORE_FILE_NAME} and added ${STATE_DIRECTORY_NAME}/`);
+            logger.info(`Created ${chalk.cyan(GITIGNORE_FILE_NAME)} and added ${chalk.cyan(STATE_DIRECTORY_NAME)}/`);
         } else {
-            logger.error(`Failed to update ${GITIGNORE_FILE_NAME}: ${getErrorMessage(error)}`);
+            logger.error(`Failed to update ${chalk.cyan(GITIGNORE_FILE_NAME)}: ${getErrorMessage(error)}`);
         }
     }
 };
@@ -50,11 +51,11 @@ export const initCommand = async (cwd: string = process.cwd()): Promise<void> =>
 
     const config = await findConfig(cwd);
     if (config) {
-        logger.warn(`${CONFIG_FILE_NAME} already exists. Initialization skipped.`);
+        logger.warn(`${chalk.cyan(CONFIG_FILE_NAME)} already exists. Initialization skipped.`);
         logger.log(`
-To use relaycode, please run 'relay watch'.
+To use relaycode, please run ${chalk.magenta("'relay watch'")}.
 It will display a system prompt to copy into your LLM assistant.
-You can review your configuration in ${CONFIG_FILE_NAME}.
+You can review your configuration in ${chalk.cyan(CONFIG_FILE_NAME)}.
 `);
         return;
     }

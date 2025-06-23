@@ -4,6 +4,7 @@ import { loadConfigOrExit } from '../core/config';
 import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
+import chalk from 'chalk';
 
 export const applyCommand = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
     const config = await loadConfigOrExit(cwd);
@@ -13,9 +14,9 @@ export const applyCommand = async (filePath: string, cwd: string = process.cwd()
     const absoluteFilePath = path.resolve(cwd, filePath);
     try {
         content = await fs.readFile(absoluteFilePath, 'utf-8');
-        logger.info(`Reading patch from file: ${absoluteFilePath}`);
+        logger.info(`Reading patch from file: ${chalk.cyan(absoluteFilePath)}`);
     } catch (error) {
-        logger.error(`Failed to read patch file at '${absoluteFilePath}'. Aborting.`);
+        logger.error(`Failed to read patch file at '${chalk.cyan(absoluteFilePath)}'. Aborting.`);
         return;
     }
 
@@ -29,5 +30,5 @@ export const applyCommand = async (filePath: string, cwd: string = process.cwd()
 
     logger.success('Valid patch format detected. Processing...');
     await processPatch(config, parsedResponse, { cwd });
-    logger.info('--------------------------------------------------');
+    logger.info(chalk.gray('--------------------------------------------------'));
 };

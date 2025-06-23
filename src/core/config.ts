@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { Config, ConfigSchema } from '../types';
 import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
+import chalk from 'chalk';
 
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
   const configPath = path.join(cwd, CONFIG_FILE_NAME);
@@ -25,8 +26,8 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
 export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Config> => {
     const config = await findConfig(cwd);
     if (!config) {
-        logger.error(`Configuration file '${CONFIG_FILE_NAME}' not found.`);
-        logger.info("Please run 'relay init' to create one.");
+        logger.error(`Configuration file '${chalk.cyan(CONFIG_FILE_NAME)}' not found.`);
+        logger.info(`Please run ${chalk.magenta("'relay init'")} to create one.`);
         process.exit(1);
     }
     return config;
