@@ -23,6 +23,10 @@ export const findConfigPath = async (cwd: string = process.cwd()): Promise<strin
   return null;
 };
 
+interface ConfigModule {
+  default: RelayCodeConfigInput;
+}
+
 const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInput> => {
   let importPath = configPath;
   let tempDir: string | null = null;
@@ -45,7 +49,8 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
   }
 
   try {
-    const module = await import(`${importPath}?t=${Date.now()}`);
+    // Dynamically import the module. The cache-busting `?t=` is important for reloads.
+    const module: ConfigModule = await import(`${importPath}?t=${Date.now()}`);
     return module.default;
   } finally {
     if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });

@@ -1,4 +1,24 @@
-const notifier = require('toasted-notifier');
+const toastedNotifier = require('toasted-notifier');
+
+// Manually define the interface for the parts of toasted-notifier we use,
+// as it doesn't have official TypeScript definitions.
+interface NotifyOptions {
+  title: string;
+  message: string;
+  sound: boolean;
+  wait: boolean;
+  actions?: string[];
+  timeout?: number;
+}
+
+interface ToastedNotifier {
+  notify(
+    options: NotifyOptions,
+    callback?: (err: Error | null, response: string) => void,
+  ): void;
+}
+
+const notifier: ToastedNotifier = toastedNotifier;
 import { APP_NAME } from './constants';
 import { getErrorMessage, logger } from './logger';
 
@@ -11,19 +31,16 @@ const sendNotification = (options: { title: string; message: string; enableNotif
     }
     
     try {
-        notifier.notify(
-            {
-                title: options.title,
-                message: options.message,
-                sound: false, // Keep it quiet by default
-                wait: false,
-            },
-            (err: any) => {
-                if (err) {
-                    // Silently ignore errors. This is a non-critical feature.
-                }
+        notifier.notify({
+            title: options.title,
+            message: options.message,
+            sound: false, // Keep it quiet by default
+            wait: false,
+        }, (err: Error | null) => {
+            if (err) {
+                // Silently ignore errors. This is a non-critical feature.
             }
-        );
+        });
     } catch (err) {
         // Silently ignore errors.
     }
@@ -74,7 +91,7 @@ export const requestApprovalWithNotification = (
                     actions: ['Approve', 'Reject'],
                     timeout: 30, // seconds
                 },
-                (err: any, response: string) => {
+                (err: Error | null, response: string) => {
                     if (err) {
                         logger.debug(`Notification approval error: ${getErrorMessage(err)}`);
                         return resolve('unsupported');

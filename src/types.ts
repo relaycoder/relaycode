@@ -73,7 +73,7 @@ export type FileOperation = z.infer<typeof FileOperationSchema>;
 export const ControlYamlSchema = z.object({
   projectId: z.string(),
   uuid: z.string().uuid(),
-  changeSummary: z.array(z.record(z.string())).optional(), // Not strictly used, but good to parse
+  changeSummary: z.array(z.record(z.string(), z.string())).optional(), // Not strictly used, but good to parse
   gitCommitMsg: z.string().optional(),
   promptSummary: z.string().optional(),
 });

@@ -1,6 +1,6 @@
-#### separated file system ops
+#### separated file system ops in another file for differentiate concerns
 
-#### should be no type of any/unknown
+#### ✅ DONE: should be no type of any/unknown
 
 #### ✅ DONE: add -y tag in `relay git commit y` also add y to more necessary another commands
 

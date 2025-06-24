@@ -2,7 +2,7 @@ import clipboardy from 'clipboardy';
 import { logger, getErrorMessage } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, ExecException } from 'child_process';
 import { executeShellCommand } from '../utils/shell';
 import { FALLBACKS_DIR, WINDOWS_CLIPBOARD_EXE_NAME, WINDOWS_DIR } from '../utils/constants';
 
@@ -47,7 +47,7 @@ const createDirectWindowsClipboardReader = (): ClipboardReader => {
       
       const command = `"${WINDOWS_CLIPBOARD_PATH}" --paste`;
       
-      exec(command, { encoding: 'utf8' }, (error, stdout, stderr) => {
+      exec(command, { encoding: 'utf8' }, (error: ExecException | null, stdout: string, stderr: string) => {
         if (error) {
           // It's common for the clipboard executable to fail if the clipboard is empty
           // or contains non-text data (e.g., an image). We can treat this as "no content".

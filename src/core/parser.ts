@@ -109,7 +109,7 @@ const extractAndParseYaml = (rawText: string) => {
     if (!yamlText) return { control: null, textWithoutYaml: rawText };
 
     try {
-        const yamlContent = yaml.load(yamlText);
+        const yamlContent: unknown = yaml.load(yamlText);
         const control = ControlYamlSchema.parse(yamlContent);
         return { control, textWithoutYaml };
     } catch (e) {

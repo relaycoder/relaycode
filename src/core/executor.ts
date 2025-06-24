@@ -37,8 +37,8 @@ export const writeFileContent = async (filePath: string, content: string, cwd: s
 export const deleteFile = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
   try {
     await fs.unlink(path.resolve(cwd, filePath));
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR')) {
       // File already deleted or is a directory, which is fine for an unlink operation.
       return;
     }
@@ -58,8 +58,8 @@ export const fileExists = async (filePath: string, cwd: string = process.cwd()):
 export const safeRename = async (fromPath: string, toPath:string): Promise<void> => {
     try {
         await fs.rename(fromPath, toPath);
-    } catch (error) {
-        if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
+    } catch (error: unknown) {
+        if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'EXDEV') {
             await fs.copyFile(fromPath, toPath);
             await fs.unlink(fromPath);
         } else {
@@ -162,10 +162,10 @@ const removeEmptyParentDirectories = async (dirPath: string, rootDir: string): P
       // Recursively check parent directory
       await removeEmptyParentDirectories(path.dirname(dirPath), rootDir);
     }
-  } catch (error) {
+  } catch (error: unknown) {
     // Ignore directory removal errors, but don't continue up the chain
     if (!(error instanceof Error && 'code' in error &&
-        (error.code === 'ENOENT' || error.code === 'ENOTDIR'))) {
+        ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR'))) {
       console.warn(`Failed to clean up directory ${dirPath}:`, getErrorMessage(error));
     }
   }
