@@ -57,52 +57,61 @@ program
   .version(version, '-v, --version')
   .description('A developer assistant that automates applying code changes from LLMs.');
 
-const commands: CommandInfo[] = [
+const mainCommands: CommandInfo[] = [
   { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: () => initCommand(process.cwd()) },
-  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', 
+  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.',
     action: (options: { yes: boolean }) => { watchCommand(options, process.cwd()); },
-    options: [skipConfirmationOption] 
+    options: [skipConfirmationOption]
   },
-  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', 
-    args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, 
+  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.',
+    args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' },
     action: (filePath: string, options: { yes: boolean }) => applyCommand(filePath, options, process.cwd()),
-    options: [skipConfirmationOption] 
+    options: [skipConfirmationOption]
   },
   { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: () => logCommand(process.cwd()) },
-  { name: 'revert', alias: 'u', description: 'Reverts a transaction. Defaults to the last one.', 
-    args: { syntax: '[uuid_or_index]', description: 'The UUID or index (e.g., 1, 2) of the transaction to revert.' }, 
+  { name: 'revert', alias: 'u', description: 'Reverts a transaction. Defaults to the last one.',
+    args: { syntax: '[uuid_or_index]', description: 'The UUID or index (e.g., 1, 2) of the transaction to revert.' },
     action: (identifier: string, options: { yes: boolean }) => revertCommand(identifier, options, process.cwd()),
-    options: [skipConfirmationOption] 
+    options: [skipConfirmationOption]
   },
 ];
 
-commands.forEach(cmdInfo => {
-  const command = program
-    .command(cmdInfo.name)
-    .alias(cmdInfo.alias)
-    .description(cmdInfo.description);
+const gitCommands: CommandInfo[] = [
+  {
+    name: 'commit',
+    alias: 'c',
+    description: 'Commits the last transaction using the message from the transaction log.',
+    action: (options: { yes: boolean }) => gitCommitCommand(options, process.cwd()),
+    options: [skipConfirmationOption]
+  },
+];
 
-  if (cmdInfo.args) {
-    command.argument(cmdInfo.args.syntax, cmdInfo.args.description);
-  }
+const setupCommands = (parent: Command, commandList: CommandInfo[]) => {
+  commandList.forEach(cmdInfo => {
+    const command = parent
+      .command(cmdInfo.name)
+      .alias(cmdInfo.alias)
+      .description(cmdInfo.description);
+  
+    if (cmdInfo.args) {
+      command.argument(cmdInfo.args.syntax, cmdInfo.args.description);
+    }
+  
+    if (cmdInfo.options) {
+      cmdInfo.options.forEach(opt => {
+        command.option(opt.flags, opt.description);
+      });
+    }
+  
+    command.action(cmdInfo.action);
+  });
+};
 
-  if (cmdInfo.options) {
-    cmdInfo.options.forEach(opt => {
-      command.option(opt.flags, opt.description);
-    });
-  }
-
-  command.action(cmdInfo.action);
-});
+setupCommands(program, mainCommands);
 
 // Git command group
 const git = program.command('git').description('Git related commands');
-git
-    .command('commit')
-    .alias('c')
-    .description('Commits the last transaction using the message from the transaction log.')
-    .option(skipConfirmationOption.flags, skipConfirmationOption.description)
-    .action((options) => gitCommitCommand(options, process.cwd()));
+setupCommands(git, gitCommands);
 
 program.parse(process.argv);
 

@@ -97,7 +97,7 @@ Use for precise, surgical replacements. The \`SEARCH\` block must be an exact ma
 Repeat this block for each replacement.
 \`\`\`diff
 <<<<<<< SEARCH
-[new content to replace with]
+[exact content to find including whitespace]
 =======
 [new content to replace with]
 >>>>>>> REPLACE

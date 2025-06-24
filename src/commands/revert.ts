@@ -104,5 +104,5 @@ export const revertCommand = async (identifier?: string, options: { yes?: boolea
     };
 
     logger.info(`Creating new transaction ${chalk.gray(newUuid)} to perform the revert.`);
-    await processPatch(config, parsedResponse, { cwd, prompter });
+    await processPatch(config, parsedResponse, { cwd, prompter, yes: options.yes });
 };
