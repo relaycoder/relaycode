@@ -95,6 +95,54 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
     }
 };
 
+type ApprovalOptions = {
+    config: Config;
+    cwd: string;
+    prompter: Prompter;
+    skipConfirmation: boolean;
+}
+
+const handleApproval = async ({ config, cwd, prompter, skipConfirmation }: ApprovalOptions): Promise<boolean> => {
+    const finalErrorCount = await getErrorCount(config.patch.linter, cwd);
+    logger.log(`  - Final linter error count: ${finalErrorCount > 0 ? chalk.red(finalErrorCount) : chalk.green(finalErrorCount)}`);
+    
+    const getManualApproval = async (reason: string): Promise<boolean> => {
+        logger.warn(reason);
+        
+        const notificationResult = await requestApprovalWithNotification(config.projectId, config.core.enableNotifications);
+
+        if (notificationResult === 'approved') {
+            logger.info('Approved via notification.');
+            return true;
+        }
+        if (notificationResult === 'rejected') {
+            logger.info('Rejected via notification.');
+            return false;
+        }
+
+        if (notificationResult === 'timeout') {
+            logger.info('Notification timed out or was dismissed. Please use the terminal to respond.');
+        }
+
+        return await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+    };
+
+    if (skipConfirmation) {
+        logger.success('  - Changes approved via -y/--yes flag.');
+        return true;
+    }
+    if (config.patch.approvalMode === 'manual') {
+        return await getManualApproval('Manual approval required because "approvalMode" is set to "manual".');
+    }
+    // auto mode
+    const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;
+    if (canAutoApprove) {
+        logger.success('  - Changes automatically approved based on your configuration.');
+        return true;
+    }
+    return await getManualApproval(`Manual approval required: Linter found ${finalErrorCount} error(s) (threshold is ${config.patch.approvalOnErrorCount}).`);
+};
+
 export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse, options?: ProcessPatchOptions): Promise<void> => {
     const cwd = options?.cwd || process.cwd();
     const prompter = options?.prompter || getConfirmation;
@@ -197,46 +245,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.success(`Lines changed: ${chalk.green(`+${totalAdded}`)}, ${chalk.red(`-${totalRemoved}`)}`);
         logger.log(`Checks completed in ${chalk.gray(`${checksDuration.toFixed(2)}ms`)}`);
 
-        // Check for approval
-        const finalErrorCount = await getErrorCount(config.patch.linter, cwd);
-        logger.log(`  - Final linter error count: ${finalErrorCount > 0 ? chalk.red(finalErrorCount) : chalk.green(finalErrorCount)}`);
-        
-        const getManualApproval = async (reason: string): Promise<boolean> => {
-            logger.warn(reason);
-            
-            const notificationResult = await requestApprovalWithNotification(config.projectId, config.core.enableNotifications);
-
-            if (notificationResult === 'approved') {
-                logger.info('Approved via notification.');
-                return true;
-            }
-            if (notificationResult === 'rejected') {
-                logger.info('Rejected via notification.');
-                return false;
-            }
-
-            if (notificationResult === 'timeout') {
-                logger.info('Notification timed out or was dismissed. Please use the terminal to respond.');
-            }
-
-            return await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
-        }
-
-        let isApproved: boolean;
-        if (skipConfirmation) {
-            logger.success('  - Changes approved via -y/--yes flag.');
-            isApproved = true;
-        } else if (config.patch.approvalMode === 'manual') {
-            isApproved = await getManualApproval('Manual approval required because "approvalMode" is set to "manual".');
-        } else { // auto mode
-            const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;
-            if (canAutoApprove) {
-                logger.success('  - Changes automatically approved based on your configuration.');
-                isApproved = true;
-            } else {
-                isApproved = await getManualApproval(`Manual approval required: Linter found ${finalErrorCount} error(s) (threshold is ${config.patch.approvalOnErrorCount}).`);
-            }
-        }
+        const isApproved = await handleApproval({ config, cwd, prompter, skipConfirmation });
 
         if (isApproved) {
             stateFile.approved = true;

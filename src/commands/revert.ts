@@ -4,15 +4,12 @@ import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import { FileOperation, ParsedLLMResponse } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
+import { createConfirmationHandler, Prompter } from '../utils/prompt';
 import { formatTransactionDetails } from '../utils/formatters';
 import chalk from 'chalk';
 
-type Prompter = (question: string) => Promise<boolean>;
-
 export const revertCommand = async (identifier?: string, options: { yes?: boolean } = {}, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
-    const skipConfirmation = options.yes === true;
-    const getConfirmation = skipConfirmation ? () => Promise.resolve(true) : (prompter || defaultGetConfirmation);
+    const getConfirmation = createConfirmationHandler(options, prompter);
     const config = await loadConfigOrExit(cwd);
 
     let targetDescription: string;

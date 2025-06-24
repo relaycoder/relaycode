@@ -23,9 +23,9 @@
   },
   "include": [
     // ".relaycode/a85c5c0c-35cd-4ec1-a75d-16a760411ab6.yml"
-    "test/e2e/watch.test.ts",
-    "test/e2e/apply.test.ts",
-    "test/e2e/revert.test.ts"
+    // "test/e2e/watch.test.ts",
+    // "test/e2e/apply.test.ts",
+    // "test/e2e/revert.test.ts"
     // "src/core/config.ts",
     // "src/core/parser.ts"
     // "src/commands/log.ts",
@@ -51,8 +51,8 @@
       "README.md",
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
-      "REQUIREMENT.md"
-      // "test"
+      "REQUIREMENT.md",
+      "test"
       // "src/utils"
       // "test/e2e/patcher.test.ts",
       // "test/e2e/transaction.test.ts",

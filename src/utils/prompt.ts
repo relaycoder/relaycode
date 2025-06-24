@@ -1,6 +1,8 @@
 import { logger } from './logger';
 
-export const getConfirmation = (question: string): Promise<boolean> => {
+export type Prompter = (question: string) => Promise<boolean>;
+
+export const getConfirmation: Prompter = (question: string) => {
   return new Promise(resolve => {
     logger.prompt(question);
     process.stdin.setEncoding('utf8');
@@ -17,4 +19,11 @@ export const getConfirmation = (question: string): Promise<boolean> => {
     };
     process.stdin.on('data', onData);
   });
+};
+
+export const createConfirmationHandler = (options: { yes?: boolean } = {}, prompter?: Prompter): Prompter => {
+  if (options.yes) {
+    return () => Promise.resolve(true);
+  }
+  return prompter || getConfirmation;
 };
