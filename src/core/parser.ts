@@ -149,19 +149,25 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                 }
             } else {
                 const parts = headerLine.split(/\s+/);
-                if (parts.length > 1) {
-                    const potentialStrategy = parts[parts.length - 1]; // peek
-                    const parsedStrategy = PatchStrategySchema.safeParse(potentialStrategy);
-                    if (!parsedStrategy.success) {
-                        filePath = parts.join(' ');
-                    } else {
-                        parts.pop(); // consume
+                // For unquoted paths, we are strict:
+                // - 1 word: it's a file path.
+                // - 2 words: it must be `path strategy`.
+                // - >2 words: it's a description and should be ignored.
+                // This prevents misinterpreting descriptive text in the header as a file path.
+                if (parts.length === 1) {
+                    filePath = parts[0];
+                } else if (parts.length === 2) {
+                    const [pathPart, strategyPart] = parts;
+                    const parsedStrategy = PatchStrategySchema.safeParse(strategyPart);
+                    if (parsedStrategy.success) {
+                        filePath = pathPart;
                         patchStrategy = parsedStrategy.data;
                         strategyProvided = true;
-                        filePath = parts.join(' ');
+                    } else {
+                        logger.debug(`Skipping unquoted header with 2 words where the second is not a strategy: "${headerLine}"`);
                     }
-                } else {
-                    filePath = headerLine;
+                } else if (parts.length > 2) {
+                    logger.debug(`Skipping unquoted header with more than 2 words: "${headerLine}"`);
                 }
             }
 

@@ -1,5 +1,5 @@
 
-#### should not write codefenced code without path info
+#### should not patch write codefenced code which without path info. because sometimes it is for example
 #### ✅ DONE: beside json, should also can produce relay.config.ts for best auto intellisense linting
 
 #### ✅ DONE: make relay.config.json content proper. like categorize objects
