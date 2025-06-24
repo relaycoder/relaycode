@@ -1,3 +1,22 @@
+Pre-flight summary:
+Lines changed: +43, -5
+Checks completed in 88.01ms
+  - Final linter error count: 1
+Changes applied. Do you want to approve and commit them? (y/N)
+n
+Rolling back changes: Changes were not approved.
+Rolling back changes: Changes were not approved.
+  - Files restored to original state.
+↩️ Transaction a6373111-a83a-446a-8b89-a311186718d7 rolled back.
+--------------------------------------------------
+Watching for next patch...
+  - Files restored to original state.
+↩️ Transaction a63e0350-f8f4-406e-82b1-581335b2e67a rolled back.
+--------------------------------------------------
+Watching for next patch...
+
+
+
 #### ✅ DONE: some cli aliases just doesnt work like relaycode -v etc
 #### ✅ DONE: do not show reasoning in relay log cli command. replace by showing promptSummary
 
