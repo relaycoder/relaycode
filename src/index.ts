@@ -1,16 +1,7 @@
 // Core logic
 export { createClipboardWatcher } from './core/clipboard';
 export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit, findConfigPath } from './core/config';
-export {
-    applyOperations,
-    createSnapshot,
-    deleteFile,
-    readFileContent,
-    restoreSnapshot,
-    writeFileContent,
-    fileExists,
-    renameFile
-} from './core/executor';
+export { applyOperations, createSnapshot, restoreSnapshot } from './core/executor';
 export { parseLLMResponse } from './core/parser';
 export {
     commitState,
@@ -39,6 +30,14 @@ export * from './types';
 
 // Utils
 export { executeShellCommand, getErrorCount } from './utils/shell';
+export {
+    deleteFile,
+    readFileContent,
+    writeFileContent,
+    fileExists,
+    renameFile,
+    safeRename,
+} from './utils/fs';
 export { logger, getErrorMessage, isEnoentError } from './utils/logger';
 export { getConfirmation } from './utils/prompt';
 export { formatTransactionDetails } from './utils/formatters';

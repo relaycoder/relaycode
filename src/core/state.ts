@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
 import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX, STATE_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
-import { fileExists, safeRename } from './executor';
+import { fileExists, safeRename } from '../utils/fs';
 
 const stateDirectoryCache = new Map<string, boolean>();
 

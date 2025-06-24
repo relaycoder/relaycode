@@ -1,4 +1,4 @@
-#### separated file system ops in another file for differentiate concerns
+#### separate file system ops in another file for differentiate concerns
 
 #### ✅ DONE: should be no type of any/unknown
 
