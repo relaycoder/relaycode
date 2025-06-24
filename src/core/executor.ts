@@ -38,8 +38,8 @@ export const deleteFile = async (filePath: string, cwd: string = process.cwd()):
   try {
     await fs.unlink(path.resolve(cwd, filePath));
   } catch (error) {
-    if (isEnoentError(error)) {
-      // File already deleted, which is fine.
+    if (error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
+      // File already deleted or is a directory, which is fine for an unlink operation.
       return;
     }
     throw error;
@@ -183,16 +183,8 @@ export const restoreSnapshot = async (snapshot: FileSnapshot, cwd: string = proc
       try {
         if (content === null) {
           // If the file didn't exist in the snapshot, make sure it doesn't exist after restore.
-          try {
-            await fs.unlink(fullPath);
-            directoriesToClean.add(path.dirname(fullPath));
-          } catch (unlinkError) {
-              if (unlinkError instanceof Error && 'code' in unlinkError && (unlinkError.code === 'ENOENT' || unlinkError.code === 'ENOTDIR')) {
-                  // This is fine, file is already gone.
-              } else {
-                  throw unlinkError; // This is a real error.
-              }
-          }
+          await deleteFile(filePath, cwd);
+          directoriesToClean.add(path.dirname(fullPath));
         } else {
           // Create directory structure if needed and write the original content back.
           await fs.mkdir(path.dirname(fullPath), { recursive: true });

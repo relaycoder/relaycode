@@ -26,16 +26,14 @@ type ParsedHeader = {
 
 const extractCodeBetweenMarkers = (content: string): string => {
     const startMarkerIndex = content.indexOf(CODE_BLOCK_START_MARKER);
-    const endMarkerIndex = content.lastIndexOf(CODE_BLOCK_END_MARKER);
-
-    if (startMarkerIndex === -1 || endMarkerIndex === -1 || endMarkerIndex <= startMarkerIndex) {
-        // Normalize line endings to Unix-style \n for consistency
-        return content.trim().replace(/\r\n/g, '\n');
+    const endMarkerIndex = content.lastIndexOf(CODE_BLOCK_END_MARKER);    
+    
+    let relevantContent = content;
+    if (startMarkerIndex !== -1 && endMarkerIndex !== -1 && endMarkerIndex > startMarkerIndex) {
+        relevantContent = content.substring(startMarkerIndex + CODE_BLOCK_START_MARKER.length, endMarkerIndex);
     }
-
-    const startIndex = startMarkerIndex + CODE_BLOCK_START_MARKER.length;
-    // Normalize line endings to Unix-style \n for consistency
-    return content.substring(startIndex, endMarkerIndex).trim().replace(/\r\n/g, '\n');
+    
+    return relevantContent.trim().replace(/\r\n/g, '\n');
 };
 
 const parseCodeBlockHeader = (headerLine: string): ParsedHeader | null => {
@@ -150,10 +148,10 @@ const parseCodeBlock = (match: RegExpExecArray): { operation: FileOperation, ful
     }
 
     const patchStrategy = inferPatchStrategy(content, parsedHeader.patchStrategy);
-    const cleanContent = content.includes(CODE_BLOCK_START_MARKER) ? extractCodeBetweenMarkers(content) : content;
+    const cleanContent = extractCodeBetweenMarkers(content);
 
     return {
-        operation: { type: 'write', path: filePath, content: cleanContent, patchStrategy },
+        operation: { type: 'write', path: filePath, content: cleanContent, patchStrategy }, 
         fullMatch
     };
 };

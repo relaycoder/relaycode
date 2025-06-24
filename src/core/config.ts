@@ -23,6 +23,35 @@ export const findConfigPath = async (cwd: string = process.cwd()): Promise<strin
   return null;
 };
 
+const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInput> => {
+  let importPath = configPath;
+  let tempDir: string | null = null;
+
+  if (configPath.endsWith('.ts')) {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-'));
+    const tempFile = path.join(tempDir, 'relaycode.config.mjs');
+
+    await build({
+      entryPoints: [configPath],
+      outfile: tempFile,
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      alias: {
+        'relaycode': path.resolve(process.cwd(), 'src/index.ts')
+      },
+    });
+    importPath = tempFile;
+  }
+
+  try {
+    const module = await import(`${importPath}?t=${Date.now()}`);
+    return module.default;
+  } finally {
+    if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
+  }
+};
+
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
   const configPath = await findConfigPath(cwd);
   if (!configPath) {
@@ -34,40 +63,7 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
       const fileContent = await fs.readFile(configPath, 'utf-8');
       configJson = JSON.parse(fileContent);
     } else { // Handle .ts or .js config
-      let importPath = configPath;
-      let tempDir: string | null = null;
-
-      // If it's a TypeScript file, we need to transpile it to JS first.
-      if (configPath.endsWith('.ts')) {
-        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-'));
-        const tempFile = path.join(tempDir, 'relaycode.config.mjs');
-
-        await build({
-          entryPoints: [configPath],
-          outfile: tempFile,
-          bundle: true,
-          platform: 'node',
-          format: 'esm',
-          // We bundle all dependencies into the temp file to avoid module resolution
-          // issues when node executes the config from the /tmp directory.
-          alias: {
-            'relaycode': path.resolve(process.cwd(), 'src/index.ts')
-          },
-        });
-
-        importPath = tempFile;
-      }
-
-      try {
-        // Use dynamic import with a cache-busting query parameter
-        const module = await import(`${importPath}?t=${Date.now()}`);
-        configJson = module.default;
-      } finally {
-        // Clean up the temporary directory if it was created
-        if (tempDir) {
-          await fs.rm(tempDir, { recursive: true, force: true });
-        }
-      }
+      configJson = await loadModuleConfig(configPath);
     }
     return ConfigSchema.parse(configJson);
   } catch (error) {
