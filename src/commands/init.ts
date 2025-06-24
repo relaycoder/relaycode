@@ -18,6 +18,7 @@ ${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME)} to customize
    - ${chalk.yellow("'new-unified'")}: Forces the AI to use diffs, great for most changes.
    - ${chalk.yellow("'replace'")}: Forces the AI to replace entire files, good for new files or small changes.
    - ${chalk.yellow("'multi-search-replace'")}: Forces the AI to perform precise search and replace operations.
+   - For Git users, enable ${chalk.yellow("'autoGitBranch'")} to create a new branch for each transaction.
 
 ${chalk.gray('2.')} Run ${chalk.magenta("'relay watch'")} in your terminal. This will start the service and display the system prompt tailored to your configuration.
 

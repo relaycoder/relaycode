@@ -218,6 +218,39 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
             notifySuccess(uuid, config.enableNotifications);
+
+            if (config.autoGitBranch) {
+                let branchNameSegment = '';
+                if (config.gitBranchTemplate === 'gitCommitMsg' && stateFile.gitCommitMsg) {
+                    branchNameSegment = stateFile.gitCommitMsg;
+                } else {
+                    branchNameSegment = stateFile.uuid;
+                }
+            
+                const sanitizedSegment = branchNameSegment
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '') // Remove all non-word, non-space, non-hyphen chars
+                    .replace(/[\s_]+/g, '-') // Replace spaces and underscores with a single hyphen
+                    .replace(/-+/g, '-') // Collapse consecutive hyphens
+                    .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
+                    .slice(0, 70); // Truncate
+            
+                if (sanitizedSegment) {
+                    const branchName = `${config.gitBranchPrefix}${sanitizedSegment}`;
+                    logger.info(`Creating and switching to new git branch: ${chalk.magenta(branchName)}`);
+                    const command = `git checkout -b "${branchName}"`;
+                    const result = await executeShellCommand(command, cwd);
+                    if (result.exitCode === 0) {
+                        logger.success(`Successfully created and switched to branch '${chalk.magenta(branchName)}'.`);
+                    } else {
+                        logger.warn(`Could not create branch '${chalk.magenta(branchName)}'. It might already exist.`);
+                        logger.debug(`'${command}' failed with: ${result.stderr}`);
+                    }
+                } else {
+                    logger.warn('Could not generate a branch name segment from commit message or UUID. Skipping git branch creation.');
+                }
+            }
         } else {
             throw new Error('Changes were not approved.');
         }

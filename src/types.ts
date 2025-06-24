@@ -15,6 +15,9 @@ export const ConfigSchema = z.object({
   postCommand: z.string().default(''),
   preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
   enableNotifications: z.boolean().default(true),
+  autoGitBranch: z.boolean().default(false),
+  gitBranchPrefix: z.string().default('relay/'),
+  gitBranchTemplate: z.enum(['uuid', 'gitCommitMsg']).default('gitCommitMsg'),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

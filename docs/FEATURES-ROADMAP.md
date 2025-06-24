@@ -17,6 +17,14 @@ Watching for next patch...
 
 
 
+#### watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
+#### implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
+- `autoGitBranch`:  true false for on off
+    -   `gitBranchPrefix`: user can customize wether it is {gitCommitMsg} or it is {uuid} .
+    -   **On Successful transaction:** `git checkout -b relay/gitCommitMsg`.
+
+
+
 #### ✅ DONE: some cli aliases just doesnt work like relaycode -v etc
 #### ✅ DONE: do not show reasoning in relay log cli command. replace by showing promptSummary
 
@@ -150,15 +158,6 @@ Skipping patch: uuid 'a6311de1-b844-4861-9c8e-a9d70de792f4' has already been pro
       "to": "src/new-name.ts"
     }
     ```
-
-
-#### First-Class Git Integration
--   **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
-    -   `gitBranchPrefix`: A config option (e.g., `"relay/patch-"`).
-    -   **On start of transaction:** `git checkout -b relay/patch-2a8b-short-uuid`.
-    -   **On approval:** The code is committed. The commit message can be auto-generated from the LLM's reasoning and `changeSummary`. The branch is then left for the user to review, merge, or delete.
-    -   **On rollback:** The changes are reverted, and the newly created branch is forcefully deleted (`git checkout -; git branch -D relay/patch-...`).
--   **Why:** This is a transformative feature. It aligns Relaycode's atomic transactions with Git's atomic commits, making history management clean and idiomatic. It eliminates any risk of dirtying the main working branch and allows for easy review of changes using standard `git` and platform tools (GitHub PRs, etc.).
 
 
 #### ✅ DONE: System-Level Notifications

@@ -8,5 +8,8 @@
   "preCommand": "",
   "postCommand": "",
   "preferredStrategy": "auto",
-  "enableNotifications": true
+  "enableNotifications": true,
+  "autoGitBranch": false,
+  "gitBranchPrefix": "relay/",
+  "gitBranchTemplate": "gitCommitMsg"
 }
