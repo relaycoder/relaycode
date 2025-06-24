@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { FileOperation, ParsedLLMResponse, StateFile } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
-import { formatTransactionDetails } from './log';
+import { formatTransactionDetails } from '../utils/formatters';
 import chalk from 'chalk';
 
 type Prompter = (question: string) => Promise<boolean>;

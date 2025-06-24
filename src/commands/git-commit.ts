@@ -2,7 +2,7 @@ import { findLatestStateFile } from '../core/state';
 import { logger } from '../utils/logger';
 import { executeShellCommand } from '../utils/shell';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
-import { formatTransactionDetails } from './log';
+import { formatTransactionDetails } from '../utils/formatters';
 import chalk from 'chalk';
 
 type Prompter = (question: string) => Promise<boolean>;

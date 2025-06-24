@@ -28,7 +28,7 @@ const sendNotification = (options: { title: string; message: string; enableNotif
     }
 };
 
-const createNotifier = (messageTemplate: (param: string) => string) => {
+export const createNotifier = (messageTemplate: (param: string) => string) => {
     return (param: string, enableNotifications: boolean = true) => {
         sendNotification({
             title: APP_NAME,
