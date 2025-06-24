@@ -14,10 +14,15 @@ import {
     DELETE_FILE_MARKER,
     RENAME_FILE_OPERATION
 } from '../utils/constants';
-import { logger } from '../utils/logger';
+import { getErrorMessage, logger } from '../utils/logger';
 
 const CODE_BLOCK_REGEX = /```(?:\w+)?(?:\s*\/\/\s*(.*?)|\s+(.*?))?[\r\n]([\s\S]*?)[\r\n]```/g;
 const YAML_BLOCK_REGEX = /```yaml[\r\n]([\s\S]+?)```/;
+
+type ParsedHeader = {
+    filePath: string;
+    patchStrategy: PatchStrategy | null;
+};
 
 const extractCodeBetweenMarkers = (content: string): string => {
     const startMarkerIndex = content.indexOf(CODE_BLOCK_START_MARKER);
@@ -33,219 +38,164 @@ const extractCodeBetweenMarkers = (content: string): string => {
     return content.substring(startIndex, endMarkerIndex).trim().replace(/\r\n/g, '\n');
 };
 
-export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
+const parseCodeBlockHeader = (headerLine: string): ParsedHeader | null => {
+    const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
+    if (quotedMatch) {
+        const filePath = quotedMatch[1]!;
+        const strategyStr = (quotedMatch[2] || '').trim();
+        if (strategyStr) {
+            const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
+            if (!parsedStrategy.success) {
+                logger.debug(`Invalid patch strategy for quoted path: ${strategyStr}`);
+                return null;
+            }
+            return { filePath, patchStrategy: parsedStrategy.data };
+        }
+        return { filePath, patchStrategy: null };
+    }
+
+    const parts = headerLine.split(/\s+/);
+    if (parts.length === 1 && parts[0]) {
+        return { filePath: parts[0], patchStrategy: null };
+    }
+    if (parts.length === 2 && parts[0] && parts[1]) {
+        const parsedStrategy = PatchStrategySchema.safeParse(parts[1]);
+        if (parsedStrategy.success) {
+            return { filePath: parts[0], patchStrategy: parsedStrategy.data };
+        } else {
+            logger.debug(`Treating entire header as file path since second word is not a valid strategy: "${headerLine}"`);
+            return { filePath: headerLine, patchStrategy: null };
+        }
+    }
+
+    if (parts.length > 2) {
+        logger.debug(`Skipping unquoted header with more than 2 words: "${headerLine}"`);
+        return null;
+    }
+
+    return null; // For empty or invalid header
+};
+
+const inferPatchStrategy = (content: string, providedStrategy: PatchStrategy | null): PatchStrategy => {
+    if (providedStrategy) return providedStrategy;
+    if (/^<<<<<<< SEARCH\s*$/m.test(content) && content.includes('>>>>>>> REPLACE')) return 'multi-search-replace';
+    if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) return 'new-unified';
+    return 'replace';
+};
+
+const extractAndParseYaml = (rawText: string) => {
+    const yamlBlockMatch = rawText.match(YAML_BLOCK_REGEX);
+    let yamlText: string | null = null;
+    let textWithoutYaml = rawText;
+
+    if (yamlBlockMatch?.[1]) {
+        yamlText = yamlBlockMatch[1];
+        textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
+    } else {
+        const lines = rawText.trim().split('\n');
+        let yamlStartIndex = -1;
+        const searchLimit = Math.max(0, lines.length - 20);
+        for (let i = lines.length - 1; i >= searchLimit; i--) {
+            if (lines[i]?.trim().match(/^projectId:\s*['"]?[\w.-]+['"]?$/)) {
+                yamlStartIndex = i;
+                break;
+            }
+        }
+
+        if (yamlStartIndex !== -1) {
+            yamlText = lines.slice(yamlStartIndex).join('\n');
+            textWithoutYaml = lines.slice(0, yamlStartIndex).join('\n').trim();
+        }
+    }
+
+    if (!yamlText) return { control: null, textWithoutYaml: rawText };
+
     try {
-        logger.debug('Parsing LLM response...');
-        let yamlText: string | null = null;
-        let textWithoutYaml: string = rawText;
-
-        const yamlBlockMatch = rawText.match(YAML_BLOCK_REGEX);
-        if (yamlBlockMatch && yamlBlockMatch[1]) {
-            logger.debug('Found YAML code block.');
-            yamlText = yamlBlockMatch[1];
-            textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
-        } else {
-            logger.debug('No YAML code block found. Looking for raw YAML content at the end.');
-            const lines = rawText.trim().split('\n');
-            let yamlStartIndex = -1;
-            // Search from the end, but not too far, maybe last 15 lines
-            const searchLimit = Math.max(0, lines.length - 15);
-            for (let i = lines.length - 1; i >= searchLimit; i--) {
-                const trimmedLine = lines[i]?.trim();
-                if (trimmedLine && trimmedLine.match(/^projectId:\s*['"]?[\w.-]+['"]?$/)) {
-                    yamlStartIndex = i;
-                    break;
-                }
-            }
-
-            if (yamlStartIndex !== -1) {
-                logger.debug(`Found raw YAML starting at line ${yamlStartIndex}.`);
-                const yamlLines = lines.slice(yamlStartIndex);
-                const textWithoutYamlLines = lines.slice(0, yamlStartIndex);
-                yamlText = yamlLines.join('\n');
-                textWithoutYaml = textWithoutYamlLines.join('\n').trim();
-            }
-        }
-        
-        logger.debug(`YAML content: ${yamlText ? 'Found' : 'Not found'}`);
-        if (!yamlText) {
-            logger.debug('No YAML content found');
-            return null;
-        }
-
-        let control;
-        try {
-            const yamlContent = yaml.load(yamlText);
-            logger.debug(`YAML content parsed: ${JSON.stringify(yamlContent)}`);
-            control = ControlYamlSchema.parse(yamlContent);
-            logger.debug(`Control schema parsed: ${JSON.stringify(control)}`);
-        } catch (e) {
-            logger.debug(`Error parsing YAML or control schema: ${e}`);
-            return null;
-        }
-        
-        const operations: FileOperation[] = [];
-        const matchedBlocks: string[] = [];
-        
-        let match;
-        logger.debug('Looking for code blocks...');
-        let blockCount = 0;
-        while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
-            blockCount++;
-            logger.debug(`Found code block #${blockCount}`);
-            const [fullMatch, commentHeaderLine, spaceHeaderLine, rawContent] = match;
-
-            // Get the header line from either the comment style or space style
-            const headerLineUntrimmed = commentHeaderLine || spaceHeaderLine || '';
-            
-            if (typeof headerLineUntrimmed !== 'string' || typeof rawContent !== 'string') {
-                logger.debug('Header line or raw content is not a string, skipping');
-                continue;
-            }
-
-            const headerLine = headerLineUntrimmed.trim();
-            const content = rawContent.trim();
-
-            // Handle rename operation as a special case
-            if (headerLine === RENAME_FILE_OPERATION) {
-                logger.debug(`Found rename-file operation`);
-                matchedBlocks.push(fullMatch);
-                try {
-                    const renameData = JSON.parse(content);
-                    const RenameFileContentSchema = z.object({ from: z.string().min(1), to: z.string().min(1) });
-                    const renameOp = RenameFileContentSchema.parse(renameData);
-                    operations.push({ type: 'rename', from: renameOp.from, to: renameOp.to });
-                } catch (e) {
-                    logger.debug(`Invalid rename operation content, skipping: ${e instanceof Error ? e.message : String(e)}`);
-                }
-                continue;
-            }
-
-
-            if (headerLine === '') {
-                logger.debug('Empty header line, skipping');
-                continue;
-            }
-
-            logger.debug(`Header line: ${headerLine}`);
-            matchedBlocks.push(fullMatch);
-            
-            let filePath = '';
-            let strategyProvided = false;
-            let patchStrategy: PatchStrategy = 'replace'; // Default
-            
-            const quotedMatch = headerLine.match(/^"(.+?)"(?:\s+(.*))?$/);
-            if (quotedMatch) {
-                filePath = quotedMatch[1]!;
-                const strategyStr = (quotedMatch[2] || '').trim();
-                if (strategyStr) {
-                    const parsedStrategy = PatchStrategySchema.safeParse(strategyStr);
-                    if (!parsedStrategy.success) {
-                        logger.debug('Invalid patch strategy for quoted path, skipping');
-                        continue;
-                    }
-                    patchStrategy = parsedStrategy.data;
-                    strategyProvided = true;
-                }
-            } else {
-                const parts = headerLine.split(/\s+/);
-                // For unquoted paths, we are strict:
-                // - 1 word: it's a file path.
-                // - 2 words: it must be `path strategy`.
-                // - >2 words: it's a description and should be ignored.
-                // This prevents misinterpreting descriptive text in the header as a file path.
-                if (parts.length === 1 && parts[0]) {
-                    filePath = parts[0];
-                } else if (parts.length === 2 && parts[0] && parts[1]) {
-                    const pathPart = parts[0];
-                    const strategyPart = parts[1];
-                    const parsedStrategy = PatchStrategySchema.safeParse(strategyPart);
-                    if (parsedStrategy.success) {
-                        filePath = pathPart;
-                        patchStrategy = parsedStrategy.data;
-                        strategyProvided = true;
-                    } else {
-                        // If the second word is not a valid strategy, treat the entire header as a file path
-                        filePath = headerLine;
-                        logger.debug(`Treating entire header as file path since second word is not a valid strategy: "${headerLine}"`);
-                    }
-                } else if (parts.length > 2) {
-                    logger.debug(`Skipping unquoted header with more than 2 words: "${headerLine}"`);
-                }
-            }
-
-            if (!strategyProvided) {
-                // Check for multi-search-replace format with a more precise pattern
-                // Looking for the exact pattern at the start of a line AND the ending marker
-                if (/^<<<<<<< SEARCH\s*$/m.test(content) && content.includes('>>>>>>> REPLACE')) {
-                    patchStrategy = 'multi-search-replace';
-                    logger.debug('Inferred patch strategy: multi-search-replace');
-                } 
-                // Check for new-unified format with more precise pattern
-                else if (content.startsWith('--- ') && content.includes('+++ ') && content.includes('@@')) {
-                    patchStrategy = 'new-unified';
-                    logger.debug('Inferred patch strategy: new-unified');
-                }
-                // If neither pattern is detected, keep the default 'replace' strategy
-                else {
-                    logger.debug('No specific patch format detected, using default replace strategy');
-                }
-            }
-
-            logger.debug(`File path: ${filePath}`);
-            logger.debug(`Patch strategy: ${patchStrategy}`);
-            
-            if (!filePath) {
-                logger.debug('Empty file path, skipping');
-                continue;
-            }
-
-            if (content === DELETE_FILE_MARKER) {
-                logger.debug(`Adding delete operation for: ${filePath}`);
-                operations.push({ type: 'delete', path: filePath });
-            } else {
-                const cleanContent = extractCodeBetweenMarkers(content);
-                logger.debug(`Adding write operation for: ${filePath}`);
-                operations.push({ 
-                    type: 'write', 
-                    path: filePath, 
-                    content: cleanContent, 
-                    patchStrategy 
-                });
-            }
-        }
-        
-        logger.debug(`Found ${blockCount} code blocks, ${operations.length} operations`);
-        
-        let reasoningText = textWithoutYaml;
-        for (const block of matchedBlocks) {
-            reasoningText = reasoningText.replace(block, '');
-        }
-        const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
-
-        if (operations.length === 0) {
-            logger.debug('No operations found, returning null');
-            return null;
-        }
-
-        try {
-            const parsedResponse = ParsedLLMResponseSchema.parse({
-                control,
-                operations,
-                reasoning,
-            });
-            logger.debug('Successfully parsed LLM response');
-            return parsedResponse;
-        } catch (e) {
-            logger.debug(`Error parsing final response schema: ${e}`);
-            return null;
-        }
+        const yamlContent = yaml.load(yamlText);
+        const control = ControlYamlSchema.parse(yamlContent);
+        return { control, textWithoutYaml };
     } catch (e) {
-        if (e instanceof z.ZodError) {
-            logger.debug(`ZodError: ${JSON.stringify(e.errors)}`);
-        } else {
-            logger.debug(`Unexpected error: ${e}`);
+        logger.debug(`Error parsing YAML or control schema: ${getErrorMessage(e)}`);
+        return { control: null, textWithoutYaml: rawText };
+    }
+};
+
+const parseCodeBlock = (match: RegExpExecArray): { operation: FileOperation, fullMatch: string } | null => {
+    const [fullMatch, commentHeaderLine, spaceHeaderLine, rawContent] = match;
+    const headerLine = (commentHeaderLine || spaceHeaderLine || '').trim();
+    const content = (rawContent || '').trim();
+
+    if (!headerLine) return null;
+
+    if (headerLine === RENAME_FILE_OPERATION) {
+        try {
+            const { from, to } = z.object({ from: z.string().min(1), to: z.string().min(1) }).parse(JSON.parse(content));
+            return { operation: { type: 'rename', from, to }, fullMatch };
+        } catch (e) {
+            logger.debug(`Invalid rename operation content: ${getErrorMessage(e)}`);
+            return null;
         }
+    }
+
+    const parsedHeader = parseCodeBlockHeader(headerLine);
+    if (!parsedHeader) {
+        logger.debug(`Could not parse header: ${headerLine}`);
+        return null;
+    }
+
+    const { filePath } = parsedHeader;
+
+    if (content === DELETE_FILE_MARKER) {
+        return { operation: { type: 'delete', path: filePath }, fullMatch };
+    }
+
+    const patchStrategy = inferPatchStrategy(content, parsedHeader.patchStrategy);
+    const cleanContent = content.includes(CODE_BLOCK_START_MARKER) ? extractCodeBetweenMarkers(content) : content;
+
+    return {
+        operation: { type: 'write', path: filePath, content: cleanContent, patchStrategy },
+        fullMatch
+    };
+};
+
+export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
+    logger.debug('Parsing LLM response...');
+    const { control, textWithoutYaml } = extractAndParseYaml(rawText);
+
+    if (!control) {
+        logger.debug('Could not parse control YAML from response.');
+        return null;
+    }
+
+    const operations: FileOperation[] = [];
+    const matchedBlocks: string[] = [];
+    let match;
+
+    while ((match = CODE_BLOCK_REGEX.exec(textWithoutYaml)) !== null) {
+        const result = parseCodeBlock(match);
+        if (result) {
+            operations.push(result.operation);
+            matchedBlocks.push(result.fullMatch);
+        }
+    }
+
+    if (operations.length === 0) {
+        logger.debug('No valid operations found in response.');
+        return null;
+    }
+
+    let reasoningText = textWithoutYaml;
+    for (const block of matchedBlocks) {
+        reasoningText = reasoningText.replace(block, '');
+    }
+    const reasoning = reasoningText.split('\n').map(line => line.trim()).filter(Boolean);
+
+    try {
+        const parsedResponse = ParsedLLMResponseSchema.parse({ control, operations, reasoning });
+        logger.debug('Successfully parsed LLM response.');
+        return parsedResponse;
+    } catch (e) {
+        logger.debug(`Final validation failed: ${getErrorMessage(e)}`);
         return null;
     }
 };
