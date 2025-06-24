@@ -46,6 +46,7 @@ export {
     createNotifier,
     notifyPatchDetected,
     notifyApprovalRequired,
+    requestApprovalWithNotification,
     notifySuccess,
     notifyFailure,
 } from './utils/notifier';

@@ -1,4 +1,8 @@
+#### add -y tag in `relay git commit y` also add y to more necessary another commands
+
 #### useful action buttons in system notifications
+
+#### make the codebase highly radically significantly DRY for super less code. all without causing features breaks and regressions
 
 #### make the codebase highly DRY for super less code. refactor algorithm to be more efficient. all without causing features breaks and regressions
 

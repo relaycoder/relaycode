@@ -166,7 +166,7 @@ Repeat this block for each replacement.
     return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
 };
 
-export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
+export const watchCommand = async (options: { yes?: boolean } = {}, cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
   let configWatcher: fs.FSWatcher | null = null;
   let debounceTimer: NodeJS.Timeout | null = null;
@@ -198,7 +198,7 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
         return;
       }
 
-      await processPatch(config, parsedResponse, { cwd, notifyOnStart: true });
+      await processPatch(config, parsedResponse, { cwd, notifyOnStart: true, yes: options.yes });
       logger.info('--------------------------------------------------');
       logger.info('Watching for next patch...');
     });

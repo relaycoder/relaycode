@@ -6,7 +6,7 @@ import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
 import chalk from 'chalk';
 
-export const applyCommand = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
+export const applyCommand = async (filePath: string, options: { yes?: boolean } = {}, cwd: string = process.cwd()): Promise<void> => {
     const config = await loadConfigOrExit(cwd);
     logger.setLevel(config.core.logLevel);
 
@@ -29,6 +29,6 @@ export const applyCommand = async (filePath: string, cwd: string = process.cwd()
     }
 
     logger.success('Valid patch format detected. Processing...');
-    await processPatch(config, parsedResponse, { cwd });
+    await processPatch(config, parsedResponse, { cwd, yes: options.yes });
     logger.info(chalk.gray('--------------------------------------------------'));
 };

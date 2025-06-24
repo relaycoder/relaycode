@@ -24,7 +24,8 @@
     "test": "bun test",
     "dev": "bun run src/cli.ts",
     "prepublishOnly": "bun run build",
-    "bundle": "repomix && sudo rm -rf docs/repomix-output.md && clear"
+    "bundle": "repomix && sudo rm -rf docs/repomix-output.md && clear",
+    "commit": "relaycode git commit -y && git push"
   },
   "dependencies": {
     "chalk": "^5.4.1",

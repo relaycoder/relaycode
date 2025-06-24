@@ -10,8 +10,9 @@ import chalk from 'chalk';
 
 type Prompter = (question: string) => Promise<boolean>;
 
-export const revertCommand = async (identifier?: string, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
-    const getConfirmation = prompter || defaultGetConfirmation;
+export const revertCommand = async (identifier?: string, options: { yes?: boolean } = {}, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
+    const skipConfirmation = options.yes === true;
+    const getConfirmation = skipConfirmation ? () => Promise.resolve(true) : (prompter || defaultGetConfirmation);
     const config = await loadConfigOrExit(cwd);
 
     let targetDescription: string;

@@ -7,8 +7,9 @@ import chalk from 'chalk';
 
 type Prompter = (question: string) => Promise<boolean>;
 
-export const gitCommitCommand = async (cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
-    const getConfirmation = prompter || defaultGetConfirmation;
+export const gitCommitCommand = async (options: { yes?: boolean } = {}, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
+    const skipConfirmation = options.yes === true;
+    const getConfirmation = skipConfirmation ? () => Promise.resolve(true) : (prompter || defaultGetConfirmation);
 
     logger.info('Looking for the last transaction to commit...');
     const latestTransaction = await findLatestStateFile(cwd);

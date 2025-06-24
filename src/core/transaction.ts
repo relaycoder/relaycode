@@ -5,7 +5,7 @@ import { createSnapshot, restoreSnapshot, applyOperations } from './executor';
 import chalk from 'chalk';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt'
-import { notifyApprovalRequired, notifyFailure, notifySuccess, notifyPatchDetected } from '../utils/notifier';
+import { requestApprovalWithNotification, notifyFailure, notifySuccess, notifyPatchDetected } from '../utils/notifier';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -13,6 +13,7 @@ type ProcessPatchOptions = {
     prompter?: Prompter;
     cwd?: string;
     notifyOnStart?: boolean;
+    yes?: boolean;
 };
 
 const calculateLineChanges = (
@@ -97,6 +98,7 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
 export const processPatch = async (config: Config, parsedResponse: ParsedLLMResponse, options?: ProcessPatchOptions): Promise<void> => {
     const cwd = options?.cwd || process.cwd();
     const prompter = options?.prompter || getConfirmation;
+    const skipConfirmation = options?.yes === true;
     const notifyOnStart = options?.notifyOnStart ?? false;
     const { control, operations, reasoning } = parsedResponse;
     const { uuid, projectId } = control;
@@ -199,14 +201,32 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         const finalErrorCount = await getErrorCount(config.patch.linter, cwd);
         logger.log(`  - Final linter error count: ${finalErrorCount > 0 ? chalk.red(finalErrorCount) : chalk.green(finalErrorCount)}`);
         
-        const getManualApproval = async (reason: string) => {
+        const getManualApproval = async (reason: string): Promise<boolean> => {
             logger.warn(reason);
-            notifyApprovalRequired(config.projectId, config.core.enableNotifications);
+            
+            const notificationResult = await requestApprovalWithNotification(config.projectId, config.core.enableNotifications);
+
+            if (notificationResult === 'approved') {
+                logger.info('Approved via notification.');
+                return true;
+            }
+            if (notificationResult === 'rejected') {
+                logger.info('Rejected via notification.');
+                return false;
+            }
+
+            if (notificationResult === 'timeout') {
+                logger.info('Notification timed out or was dismissed. Please use the terminal to respond.');
+            }
+
             return await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
         }
 
         let isApproved: boolean;
-        if (config.patch.approvalMode === 'manual') {
+        if (skipConfirmation) {
+            logger.success('  - Changes approved via -y/--yes flag.');
+            isApproved = true;
+        } else if (config.patch.approvalMode === 'manual') {
             isApproved = await getManualApproval('Manual approval required because "approvalMode" is set to "manual".');
         } else { // auto mode
             const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;

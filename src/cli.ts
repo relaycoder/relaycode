@@ -39,6 +39,15 @@ try {
   console.error('Warning: Could not determine package version', error);
 }
 
+interface CommandInfo {
+  name: string;
+  alias: string;
+  description: string;
+  action: (...args: any[]) => void;
+  args?: { syntax: string; description: string };
+  options?: { flags: string; description: string }[];
+}
+
 const program = new Command();
 
 program
@@ -46,12 +55,23 @@ program
   .version(version, '-v, --version')
   .description('A developer assistant that automates applying code changes from LLMs.');
 
-const commands = [
+const commands: CommandInfo[] = [
   { name: 'init', alias: 'i', description: 'Initializes relaycode in the current project.', action: () => initCommand(process.cwd()) },
-  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', action: () => { watchCommand(process.cwd()); } },
-  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, action: (filePath: string) => applyCommand(filePath) },
+  { name: 'watch', alias: 'w', description: 'Starts watching the clipboard for code changes to apply.', 
+    action: (options: { yes: boolean }) => { watchCommand(options, process.cwd()); },
+    options: [{ flags: '-y, --yes', description: 'Skip confirmation prompts for patches' }] 
+  },
+  { name: 'apply', alias: 'a', description: 'Applies a patch from a specified file.', 
+    args: { syntax: '<filePath>', description: 'The path to the file containing the patch.' }, 
+    action: (filePath: string, options: { yes: boolean }) => applyCommand(filePath, options, process.cwd()),
+    options: [{ flags: '-y, --yes', description: 'Skip confirmation prompts for patches' }] 
+  },
   { name: 'log', alias: 'l', description: 'Displays a log of all committed transactions.', action: () => logCommand(process.cwd()) },
-  { name: 'revert', alias: 'u', description: 'Reverts a transaction. Defaults to the last one.', args: { syntax: '[uuid_or_index]', description: 'The UUID or index (e.g., 1, 2) of the transaction to revert.' }, action: (identifier: string) => revertCommand(identifier) },
+  { name: 'revert', alias: 'u', description: 'Reverts a transaction. Defaults to the last one.', 
+    args: { syntax: '[uuid_or_index]', description: 'The UUID or index (e.g., 1, 2) of the transaction to revert.' }, 
+    action: (identifier: string, options: { yes: boolean }) => revertCommand(identifier, options, process.cwd()),
+    options: [{ flags: '-y, --yes', description: 'Skip confirmation prompts' }] 
+  },
 ];
 
 commands.forEach(cmdInfo => {
@@ -64,6 +84,12 @@ commands.forEach(cmdInfo => {
     command.argument(cmdInfo.args.syntax, cmdInfo.args.description);
   }
 
+  if (cmdInfo.options) {
+    cmdInfo.options.forEach(opt => {
+      command.option(opt.flags, opt.description);
+    });
+  }
+
   command.action(cmdInfo.action);
 });
 
@@ -73,7 +99,8 @@ git
     .command('commit')
     .alias('c')
     .description('Commits the last transaction using the message from the transaction log.')
-    .action(() => gitCommitCommand(process.cwd()));
+    .option('-y, --yes', 'Skip confirmation prompts')
+    .action((options) => gitCommitCommand(options, process.cwd()));
 
 program.parse(process.argv);
 
