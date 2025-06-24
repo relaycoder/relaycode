@@ -154,10 +154,11 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                 // - 2 words: it must be `path strategy`.
                 // - >2 words: it's a description and should be ignored.
                 // This prevents misinterpreting descriptive text in the header as a file path.
-                if (parts.length === 1) {
+                if (parts.length === 1 && parts[0]) {
                     filePath = parts[0];
-                } else if (parts.length === 2) {
-                    const [pathPart, strategyPart] = parts;
+                } else if (parts.length === 2 && parts[0] && parts[1]) {
+                    const pathPart = parts[0];
+                    const strategyPart = parts[1];
                     const parsedStrategy = PatchStrategySchema.safeParse(strategyPart);
                     if (parsedStrategy.success) {
                         filePath = pathPart;

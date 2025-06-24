@@ -4,7 +4,6 @@ import path from 'path';
 import { initCommand } from '../../src/commands/init';
 import { setupE2ETest, E2ETestContext, createTestFile } from '../test.util';
 import { CONFIG_FILE_NAME_TS, CONFIG_FILE_NAME_JSON, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
-import { ConfigSchema } from '../../src/types';
 import { logger } from '../../src/utils/logger';
 import { findConfig, findConfigPath } from '../../src/core/config';
 

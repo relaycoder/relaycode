@@ -114,7 +114,7 @@ export function createLLMResponseString(
 
 export async function runProcessPatch(
     context: E2ETestContext,
-    configOverrides: Partial<Config>,
+    configOverrides: Record<string, any>,
     operations: TestOperation[],
     options: { prompter?: Prompter, responseOverrides?: { uuid?: string, projectId?: string, reasoning?: string[] } } = {}
 ): Promise<{ uuid: string; config: Config }> {
@@ -146,7 +146,7 @@ const deepMerge = (target: any, source: any): any => {
     return result;
 };
 
-export const createTestConfig = async (cwd: string, overrides: Partial<Config> = {}): Promise<Config> => {
+export const createTestConfig = async (cwd: string, overrides: Record<string, any> = {}): Promise<Config> => {
     const defaultConfig: Config = {
         projectId: 'test-project',
         core: {
@@ -198,14 +198,19 @@ export const createTestConfig = async (cwd: string, overrides: Partial<Config> =
             delete normalizedOverrides[flatKey];
             
             const pathParts = nestedPath.split('.');
-            let current = normalizedOverrides;
+            let current: any = normalizedOverrides;
             for (let i = 0; i < pathParts.length - 1; i++) {
-                if (!current[pathParts[i]]) {
-                    current[pathParts[i]] = {};
+                const part = pathParts[i];
+                if (!part) continue;
+                if (!current[part]) {
+                    current[part] = {};
                 }
-                current = current[pathParts[i]];
+                current = current[part];
             }
-            current[pathParts[pathParts.length - 1]] = value;
+            const lastPart = pathParts[pathParts.length - 1];
+            if (lastPart) {
+                current[lastPart] = value;
+            }
         }
     }
     

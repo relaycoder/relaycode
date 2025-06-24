@@ -22,16 +22,16 @@
     }
   },
   "include": [
-    // "test",
+    "test",
     "src/core/config.ts",
-    "src/core/parser.ts",
-    "src/commands/log.ts",
-    "src/commands/init.ts",
-    "src/commands/revert.ts",
-    "test/test.util.ts",
-    "test/e2e/init.test.ts",
-    "test/e2e/log.test.ts",
-    "test/e2e/revert.test.ts"
+    "src/core/parser.ts"
+    // "src/commands/log.ts",
+    // "src/commands/init.ts",
+    // "src/commands/revert.ts",
+    // "test/test.util.ts",
+    // "test/e2e/init.test.ts",
+    // "test/e2e/log.test.ts",
+    // "test/e2e/revert.test.ts"
   ],
   "ignore": {
     "useGitignore": true,
