@@ -20,6 +20,14 @@ export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
   return path.join(getStateDirectory(cwd), UNDONE_DIRECTORY_NAME, fileName);
 };
 
+const getUuidFromFileName = (fileName: string): string => {
+  return fileName.replace(COMMITTED_STATE_FILE_SUFFIX, '');
+};
+
+const isUUID = (str: string): boolean => {
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+};
+
 // Helper to get all committed transaction file names.
 const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
     const stateDir = getStateDirectory(cwd);
@@ -31,6 +39,10 @@ const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: st
     const files = await fs.readdir(stateDir);
     const transactionFiles = files.filter(f => f.endsWith(COMMITTED_STATE_FILE_SUFFIX) && !f.endsWith(PENDING_STATE_FILE_SUFFIX));
     return { stateDir, files: transactionFiles };
+};
+
+const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string | Date }) => {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 };
 
 // Ensure state directory exists with caching for performance
@@ -108,7 +120,7 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     const { files: transactionFiles } = transactionFileInfo;
     
     const promises = transactionFiles.map(async (file) => {
-        const stateFile = await readStateFile(cwd, file.replace(COMMITTED_STATE_FILE_SUFFIX, ''));
+        const stateFile = await readStateFile(cwd, getUuidFromFileName(file));
         if (!stateFile) {
             logger.warn(`Could not read or parse state file ${file}. Skipping.`);
         }
@@ -119,7 +131,7 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     const validResults = results.filter((sf): sf is StateFile => !!sf);
 
     // Sort transactions by date, most recent first
-    validResults.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    validResults.sort(sortByDateDesc);
 
     return validResults;
 }
@@ -166,7 +178,7 @@ export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<
         return transactions?.[0] ?? null;
     }
 
-    validFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    validFiles.sort((a, b) => sortByDateDesc({ createdAt: a.createdAt }, { createdAt: b.createdAt }));
 
     const latestFile = validFiles[0];
     if (!latestFile) {
@@ -174,5 +186,28 @@ export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<
     }
 
     // Now read the full content of only the latest file
-    return readStateFile(cwd, latestFile.file.replace(COMMITTED_STATE_FILE_SUFFIX, ''));
+    return readStateFile(cwd, getUuidFromFileName(latestFile.file));
+};
+
+export const findStateFileByIdentifier = async (cwd: string, identifier: string): Promise<StateFile | null> => {
+    if (isUUID(identifier)) {
+        return readStateFile(cwd, identifier);
+    }
+    
+    if (/^-?\d+$/.test(identifier)) {
+        const index = Math.abs(parseInt(identifier, 10));
+        if (isNaN(index) || index <= 0) {
+            return null;
+        }
+        // Optimization: use the more efficient method for the most common case.
+        if (index === 1) {
+            return findLatestStateFile(cwd);
+        }
+        const allTransactions = await readAllStateFiles(cwd);
+        if (!allTransactions || allTransactions.length < index) {
+            return null;
+        }
+        return allTransactions[index - 1] ?? null;
+    }
+    return null; // Invalid identifier format
 };

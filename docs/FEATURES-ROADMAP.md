@@ -1,6 +1,8 @@
-#### make the codebase highly DRY. refactor algorithm to be more efficient. all without causing features breaks and regressions
+#### useful action buttons in system notifications
 
-#### made many changes , see in command `relay log` . then make sure the program is programmatic api friendly. because I think too many un exposed api necessary
+#### make the codebase highly DRY for super less code. refactor algorithm to be more efficient. all without causing features breaks and regressions
+
+#### DONE: made many changes , see in command `relay log` . then make sure the program is programmatic api friendly. because I think too many un exposed api necessary
 
 #### ✅ DONE: should not patch write codefenced code which without path info. because sometimes it is for example
 
@@ -35,13 +37,13 @@ Skipping patch: uuid 'a6311de1-b844-4861-9c8e-a9d70de792f4' has already been pro
 
 #### ✅ DONE: relay git commit
 
-#### VERIFY: make sure clipboard is working in linux
+#### ✅ DONE: make sure clipboard is working in linux
 
 #### ✅ DONE: should be abble to parse yaml without codefence
 
 #### ✅ DONE: user prompt summary in yaml for .relaycode log
 
-#### words level chalk
+#### ✅ DONE: words level chalk
 
 #### Automated Correction Prompting (The "Feedback Loop")
 

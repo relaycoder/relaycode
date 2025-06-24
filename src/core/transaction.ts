@@ -199,21 +199,23 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         const finalErrorCount = await getErrorCount(config.patch.linter, cwd);
         logger.log(`  - Final linter error count: ${finalErrorCount > 0 ? chalk.red(finalErrorCount) : chalk.green(finalErrorCount)}`);
         
-        let isApproved: boolean;
-        if (config.patch.approvalMode === 'auto') { // Auto mode allows conditional auto-approval
-            const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;
+        const getManualApproval = async (reason: string) => {
+            logger.warn(reason);
+            notifyApprovalRequired(config.projectId, config.core.enableNotifications);
+            return await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+        }
 
+        let isApproved: boolean;
+        if (config.patch.approvalMode === 'manual') {
+            isApproved = await getManualApproval('Manual approval required because "approvalMode" is set to "manual".');
+        } else { // auto mode
+            const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;
             if (canAutoApprove) {
                 logger.success('  - Changes automatically approved based on your configuration.');
                 isApproved = true;
             } else {
-                notifyApprovalRequired(config.projectId, config.core.enableNotifications);
-                isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
+                isApproved = await getManualApproval(`Manual approval required: Linter found ${finalErrorCount} error(s) (threshold is ${config.patch.approvalOnErrorCount}).`);
             }
-        } else { // Manual mode always requires user approval
-            logger.warn('Manual approval required because "approvalMode" is set to "manual".');
-            notifyApprovalRequired(config.projectId, config.core.enableNotifications);
-            isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
         }
 
         if (isApproved) {
@@ -222,39 +224,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
             notifySuccess(uuid, config.core.enableNotifications);
-
-            if (config.git.autoGitBranch) {
-                let branchNameSegment = '';
-                if (config.git.gitBranchTemplate === 'gitCommitMsg' && stateFile.gitCommitMsg) {
-                    branchNameSegment = stateFile.gitCommitMsg;
-                } else {
-                    branchNameSegment = stateFile.uuid;
-                }
-            
-                const sanitizedSegment = branchNameSegment
-                    .trim()
-                    .toLowerCase()
-                    .replace(/[^\w\s-]/g, '') // Remove all non-word, non-space, non-hyphen chars
-                    .replace(/[\s_]+/g, '-') // Replace spaces and underscores with a single hyphen
-                    .replace(/-+/g, '-') // Collapse consecutive hyphens
-                    .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
-                    .slice(0, 70); // Truncate
-            
-                if (sanitizedSegment) {
-                    const branchName = `${config.git.gitBranchPrefix}${sanitizedSegment}`;
-                    logger.info(`Creating and switching to new git branch: ${chalk.magenta(branchName)}`);
-                    const command = `git checkout -b "${branchName}"`;
-                    const result = await executeShellCommand(command, cwd);
-                    if (result.exitCode === 0) {
-                        logger.success(`Successfully created and switched to branch '${chalk.magenta(branchName)}'.`);
-                    } else {
-                        logger.warn(`Could not create branch '${chalk.magenta(branchName)}'. It might already exist.`);
-                        logger.debug(`'${command}' failed with: ${result.stderr}`);
-                    }
-                } else {
-                    logger.warn('Could not generate a branch name segment from commit message or UUID. Skipping git branch creation.');
-                }
-            }
+            await handleAutoGitBranch(config, stateFile, cwd);
         } else {
             logger.warn('Operation cancelled by user. Rolling back changes...');
             await rollbackTransaction(cwd, uuid, snapshot, 'User cancellation', config.core.enableNotifications, false);
@@ -262,5 +232,45 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
     } catch (error) {
         const reason = getErrorMessage(error);
         await rollbackTransaction(cwd, uuid, snapshot, reason, config.core.enableNotifications, true);
+    }
+};
+
+const handleAutoGitBranch = async (config: Config, stateFile: StateFile, cwd: string): Promise<void> => {
+    if (!config.git.autoGitBranch) return;
+
+    let branchNameSegment = '';
+    if (config.git.gitBranchTemplate === 'gitCommitMsg' && stateFile.gitCommitMsg) {
+        branchNameSegment = stateFile.gitCommitMsg;
+    } else {
+        branchNameSegment = stateFile.uuid;
+    }
+
+    const sanitizedSegment = branchNameSegment
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '') // Remove all non-word, non-space, non-hyphen chars
+        .replace(/[\s_]+/g, '-') // Replace spaces and underscores with a single hyphen
+        .replace(/-+/g, '-') // Collapse consecutive hyphens
+        .replace(/^-|-$/g, '') // Trim leading/trailing hyphens
+        .slice(0, 70); // Truncate
+
+    if (sanitizedSegment) {
+        const branchName = `${config.git.gitBranchPrefix}${sanitizedSegment}`;
+        logger.info(`Creating and switching to new git branch: ${chalk.magenta(branchName)}`);
+        const command = `git checkout -b "${branchName}"`;
+        const result = await executeShellCommand(command, cwd);
+        if (result.exitCode === 0) {
+            logger.success(`Successfully created and switched to branch '${chalk.magenta(branchName)}'.`);
+        } else {
+            // Exit code 128 from `git checkout -b` often means the branch already exists.
+            if (result.exitCode === 128 && result.stderr.includes('already exists')) {
+                logger.warn(`Could not create branch '${chalk.magenta(branchName)}' because it already exists.`);
+            } else {
+                logger.warn(`Could not create git branch '${chalk.magenta(branchName)}'.`);
+            }
+            logger.debug(`'${command}' failed with: ${result.stderr}`);
+        }
+    } else {
+        logger.warn('Could not generate a branch name segment from commit message or UUID. Skipping git branch creation.');
     }
 };

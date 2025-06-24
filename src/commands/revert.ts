@@ -1,8 +1,8 @@
 import { loadConfigOrExit } from '../core/config';
-import { readStateFile, readAllStateFiles } from '../core/state';
+import { findStateFileByIdentifier, readAllStateFiles } from '../core/state';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
-import { FileOperation, ParsedLLMResponse, StateFile } from '../types';
+import { FileOperation, ParsedLLMResponse } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfirmation as defaultGetConfirmation } from '../utils/prompt';
 import { formatTransactionDetails } from '../utils/formatters';
@@ -10,48 +10,40 @@ import chalk from 'chalk';
 
 type Prompter = (question: string) => Promise<boolean>;
 
-const isUUID = (str: string): boolean => {
-    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
-};
-
 export const revertCommand = async (identifier?: string, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
     const getConfirmation = prompter || defaultGetConfirmation;
     const config = await loadConfigOrExit(cwd);
 
-    let stateToRevert: StateFile | null = null;
     let targetDescription: string;
 
     // Default to '1' to revert the latest transaction if no identifier is provided.
     const effectiveIdentifier = identifier ?? '1';
 
-    if (isUUID(effectiveIdentifier)) {
-        targetDescription = `transaction with UUID '${chalk.cyan(effectiveIdentifier)}'`;
-        logger.info(`Attempting to revert ${targetDescription}`);
-        stateToRevert = await readStateFile(cwd, effectiveIdentifier);
-    } else if (/^-?\d+$/.test(effectiveIdentifier)) {
+    const isIndexSearch = /^-?\d+$/.test(effectiveIdentifier);
+
+    if (isIndexSearch) {
         const index = Math.abs(parseInt(effectiveIdentifier, 10));
         if (isNaN(index) || index <= 0) {
             logger.error(`Invalid index. Please provide a positive number (e.g., ${chalk.cyan('"1"')} for the latest).`);
             return;
         }
         targetDescription = index === 1 ? 'the latest transaction' : `the ${chalk.cyan(index)}-th latest transaction`;
-        logger.info(`Looking for ${targetDescription}...`);
-        const allTransactions = await readAllStateFiles(cwd);
-        if (!allTransactions || allTransactions.length < index) {
-            logger.error(`Transaction not found. Only ${chalk.cyan(allTransactions?.length ?? 0)} transactions exist.`);
-            return;
-        }
-        stateToRevert = allTransactions[index - 1] ?? null;
     } else {
-        logger.error(`Invalid identifier: '${chalk.yellow(identifier)}'. Please provide a UUID or an index (e.g., ${chalk.cyan("'1'")} for the latest).`);
-        return;
+        // We assume it's a UUID, findStateFileByIdentifier will validate
+        targetDescription = `transaction with UUID '${chalk.cyan(effectiveIdentifier)}'`;
     }
+
+    logger.info(`Looking for ${targetDescription}...`);
+    const stateToRevert = await findStateFileByIdentifier(cwd, effectiveIdentifier);
 
     if (!stateToRevert) {
         logger.error(`Could not find ${targetDescription}.`);
+        if (isIndexSearch) {
+            const allTransactions = await readAllStateFiles(cwd); // To give a helpful count
+            logger.info(`Only ${chalk.cyan(allTransactions?.length ?? 0)} transactions exist.`);
+        }
         return;
     }
-
     logger.log(chalk.bold(`Transaction to be reverted:`));
     formatTransactionDetails(stateToRevert).forEach(line => logger.log(line));
 

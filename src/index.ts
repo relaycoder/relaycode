@@ -17,6 +17,7 @@ export {
     deletePendingState,
     hasBeenProcessed,
     findLatestStateFile,
+    findStateFileByIdentifier,
     readStateFile,
     readAllStateFiles,
     writePendingState,
