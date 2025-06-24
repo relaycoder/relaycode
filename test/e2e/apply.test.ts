@@ -48,7 +48,7 @@ describe('e2e/apply', () => {
         const patchFilePath = path.join(context.testDir.path, 'patch.txt');
         await fs.writeFile(patchFilePath, response);
 
-        await applyCommand(patchFilePath, context.testDir.path);
+        await applyCommand(patchFilePath, {}, context.testDir.path);
 
         const modifiedContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(modifiedContent).toBe(newContent);
@@ -79,7 +79,7 @@ describe('e2e/apply', () => {
         const patchFilePath = path.join(context.testDir.path, 'patch.txt');
         await fs.writeFile(patchFilePath, response);
 
-        await applyCommand(patchFilePath, context.testDir.path);
+        await applyCommand(patchFilePath, {}, context.testDir.path);
 
         // Verify changes
         const editedContent = await fs.readFile(path.join(context.testDir.path, fileToEdit), 'utf-8');
@@ -100,7 +100,7 @@ describe('e2e/apply', () => {
     it('should do nothing and log an error if the patch file does not exist', async () => {
         const nonExistentPatchFile = path.join(context.testDir.path, 'no-such-file.txt');
         
-        await applyCommand(nonExistentPatchFile, context.testDir.path);
+        await applyCommand(nonExistentPatchFile, {}, context.testDir.path);
 
         const errorLog = logs.find(log => log.includes('Failed to read patch file'));
         expect(errorLog).toBeDefined();
@@ -114,7 +114,7 @@ describe('e2e/apply', () => {
         const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
         const filesBefore = await fs.readdir(stateDir);
 
-        await applyCommand(patchFilePath, context.testDir.path);
+        await applyCommand(patchFilePath, {}, context.testDir.path);
         
         const infoLog = logs.find(log => log.includes('not a valid relaycode patch. Aborting.'));
         expect(infoLog).toBeDefined();

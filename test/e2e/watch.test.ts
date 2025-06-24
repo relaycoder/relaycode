@@ -36,17 +36,12 @@ describe('e2e/watch', () => {
         const clipboardReader = async () => fakeClipboardContent;
     
         const onClipboardChange = async (content: string) => {
-            console.log('Clipboard change detected:', content.substring(0, 50) + '...');
             const currentConfig = await findConfig(context.testDir.path);
             const parsedResponse = parseLLMResponse(content);
-            console.log('Parsed response:', parsedResponse ? 'valid' : 'invalid');
             if (!currentConfig || !parsedResponse) {
-                console.log('Config or parsed response missing, skipping');
                 return;
             }
-            console.log('Processing patch...');
             await processPatch(currentConfig, parsedResponse, { cwd: context.testDir.path });
-            console.log('Patch processed');
         };
     
         watcher = createClipboardWatcher(pollInterval, onClipboardChange, clipboardReader);
@@ -54,9 +49,14 @@ describe('e2e/watch', () => {
         // Wait for a couple of poll cycles to ensure the invalid patch is read and ignored
         await new Promise(resolve => setTimeout(resolve, pollInterval * 3));
     
+        // The file should not have changed yet
         const contentAfterInvalid = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(contentAfterInvalid).toBe(originalContent);
     
+        // Stop the watcher to prevent a race condition in the test where the poller
+        // and the manual trigger run at the same time.
+        if (watcher) watcher.stop();
+
         // Now, provide a valid patch
         const newContent = 'console.log("new content");';
         const { response: validPatch } = createLLMResponseString([
@@ -64,12 +64,8 @@ describe('e2e/watch', () => {
         ]);
         fakeClipboardContent = validPatch;
 
-        // Directly trigger the callback with the valid patch
-        console.log('Manually triggering onClipboardChange with valid patch');
+        // Manually trigger the callback with the valid patch, which is now safe from race conditions
         await onClipboardChange(validPatch);
-
-        // Also wait for the polling to potentially pick it up (just in case)
-        await new Promise(resolve => setTimeout(resolve, pollInterval * 5));
     
         const contentAfterValid = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(contentAfterValid).toBe(newContent);

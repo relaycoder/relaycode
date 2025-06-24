@@ -45,7 +45,7 @@ describe('e2e/revert', () => {
         expect(contentAfterPatch).toBe(modifiedContent);
 
         // 2. Revert T1
-        await revertCommand(t1_uuid, context.testDir.path, async () => true);
+        await revertCommand(t1_uuid, {}, context.testDir.path, async () => true);
 
         // 3. Verify changes
         const contentAfterRevert = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
@@ -87,7 +87,7 @@ describe('e2e/revert', () => {
         );
         
         // 2. Revert T1
-        await revertCommand(t1_uuid, context.testDir.path, async () => true);
+        await revertCommand(t1_uuid, {}, context.testDir.path, async () => true);
 
         // 3. Verify rollback
         const restoredModifyContent = await fs.readFile(path.join(context.testDir.path, fileToModify), 'utf-8');
@@ -112,7 +112,7 @@ describe('e2e/revert', () => {
         (logger as any).error = (msg: string) => { errorLog = msg; };
 
         const fakeUuid = '00000000-0000-0000-0000-000000000000';
-        await revertCommand(fakeUuid, context.testDir.path);
+        await revertCommand(fakeUuid, {}, context.testDir.path);
         
         expect(errorLog).toContain(`Could not find transaction with UUID '${fakeUuid}'`);
     });
@@ -132,14 +132,14 @@ describe('e2e/revert', () => {
         expect(content).toBe(v2);
 
         // 2. Revert T1 to go from v2 -> v1 (T2)
-        await revertCommand(t1_uuid, context.testDir.path, async () => true);
+        await revertCommand(t1_uuid, {}, context.testDir.path, async () => true);
         content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(content).toBe(v1);
 
         // 3. Get T2's UUID and revert it to go from v1 -> v2 (T3)
         const t2 = await findLatestStateFile(context.testDir.path);
         expect(t2).not.toBeNull();
-        await revertCommand(t2!.uuid, context.testDir.path, async () => true);
+        await revertCommand(t2!.uuid, {}, context.testDir.path, async () => true);
         content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(content).toBe(v2);
 
@@ -170,21 +170,21 @@ describe('e2e/revert', () => {
 
         it('should revert the latest transaction when no identifier is provided', async () => {
             // Revert T2 (latest)
-            await revertCommand(undefined, context.testDir.path, async () => true);
+            await revertCommand(undefined, {}, context.testDir.path, async () => true);
             const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
             expect(content).toBe(v2);
         });
 
         it('should revert the latest transaction when identifier is "1"', async () => {
             // Revert T2 (latest)
-            await revertCommand('1', context.testDir.path, async () => true);
+            await revertCommand('1', {}, context.testDir.path, async () => true);
             const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
             expect(content).toBe(v2);
         });
 
         it('should revert the 2nd latest transaction when identifier is "2"', async () => {
             // Revert T1 (2nd latest)
-            await revertCommand('2', context.testDir.path, async () => true);
+            await revertCommand('2', {}, context.testDir.path, async () => true);
             const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
             expect(content).toBe(v1);
         });
@@ -192,8 +192,8 @@ describe('e2e/revert', () => {
         it('should log an error for an invalid index', async () => {
             let errorLog = '';
             (logger as any).error = (msg: string) => { errorLog = msg; };
-            await revertCommand('99', context.testDir.path, async () => true);
-            expect(errorLog).toContain('Transaction not found. Only 2 transactions exist.');
+            await revertCommand('99', {}, context.testDir.path, async () => true);
+            expect(errorLog).toContain('Could not find the 99-th latest transaction.');
         });
     });
 });
