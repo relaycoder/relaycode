@@ -1,24 +1,8 @@
-Pre-flight summary:
-Lines changed: +43, -5
-Checks completed in 88.01ms
-  - Final linter error count: 1
-Changes applied. Do you want to approve and commit them? (y/N)
-n
-Rolling back changes: Changes were not approved.
-Rolling back changes: Changes were not approved.
-  - Files restored to original state.
-↩️ Transaction a6373111-a83a-446a-8b89-a311186718d7 rolled back.
---------------------------------------------------
-Watching for next patch...
-  - Files restored to original state.
-↩️ Transaction a63e0350-f8f4-406e-82b1-581335b2e67a rolled back.
---------------------------------------------------
-Watching for next patch...
 
+#### should not write codefenced code without path info
+#### ✅ DONE: beside json, should also can produce relay.config.ts for best auto intellisense linting
 
-#### beside json, should also can produce relay.config.ts for best auto intellisense linting
-
-#### make relay.config.json content proper. like categorize objects
+#### ✅ DONE: make relay.config.json content proper. like categorize objects
 #### ✅ DONE: watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
 #### ✅ DONE: implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
 - `autoGitBranch`:  true false for on off

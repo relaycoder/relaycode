@@ -40,7 +40,8 @@
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
       "REQUIREMENT.md",
-      "test"
+      "test",
+      "src/utils"
       // "test/e2e/patcher.test.ts",
       // "test/e2e/transaction.test.ts",
       // "test/e2e/watch.test.ts",

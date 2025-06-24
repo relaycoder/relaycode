@@ -71,8 +71,10 @@ const logCompletionSummary = (
     logger.success(`✅ Transaction ${chalk.gray(uuid)} committed successfully!`);
 };
 
-const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnapshot, reason: string, enableNotifications: boolean = true): Promise<void> => {
-    logger.warn(`Rolling back changes: ${reason}`);
+const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnapshot, reason: string, enableNotifications: boolean = true, isError: boolean = true): Promise<void> => {
+    if (isError) {
+        logger.warn(`Rolling back changes: ${reason}`);
+    }
     try {
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
@@ -82,8 +84,10 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
     } finally {
         try {
             await deletePendingState(cwd, uuid);
-            logger.success(`↩️ Transaction ${chalk.gray(uuid)} rolled back.`);
-            notifyFailure(uuid, enableNotifications);
+            logger.info(`↩️ Transaction ${chalk.gray(uuid)} rolled back.`);
+            if (isError) {
+                notifyFailure(uuid, enableNotifications);
+            }
         } catch (cleanupError) {
             logger.error(`Fatal: Could not clean up pending state for ${chalk.gray(uuid)}: ${getErrorMessage(cleanupError)}`);
         }
@@ -252,10 +256,11 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
                 }
             }
         } else {
-            throw new Error('Changes were not approved.');
+            logger.warn('Operation cancelled by user. Rolling back changes...');
+            await rollbackTransaction(cwd, uuid, snapshot, 'User cancellation', config.core.enableNotifications, false);
         }
     } catch (error) {
         const reason = getErrorMessage(error);
-        await rollbackTransaction(cwd, uuid, snapshot, reason, config.core.enableNotifications);
+        await rollbackTransaction(cwd, uuid, snapshot, reason, config.core.enableNotifications, true);
     }
 };
