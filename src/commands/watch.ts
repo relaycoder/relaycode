@@ -170,6 +170,7 @@ Repeat this block for each replacement.
 export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
   const configPath = path.resolve(cwd, CONFIG_FILE_NAME);
+  let configWatcher: fs.FSWatcher | null = null;
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const startServices = (config: Config) => {
@@ -233,7 +234,12 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
   startServices(initialConfig);
 
   // Watch for changes after initial setup
-  const configWatcher = fs.watch(configPath, handleConfigChange);
+  if (initialConfig.watchConfig) {
+    logger.info('Configuration file watching is enabled.');
+    configWatcher = fs.watch(configPath, handleConfigChange);
+  } else {
+    logger.info('Configuration file watching is disabled. Changes to config will require a restart to take effect.');
+  }
 
   const stopAll = () => {
     if (clipboardWatcher) {

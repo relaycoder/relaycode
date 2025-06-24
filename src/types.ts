@@ -18,6 +18,7 @@ export const ConfigSchema = z.object({
   autoGitBranch: z.boolean().default(false),
   gitBranchPrefix: z.string().default('relay/'),
   gitBranchTemplate: z.enum(['uuid', 'gitCommitMsg']).default('gitCommitMsg'),
+  watchConfig: z.boolean().default(true),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

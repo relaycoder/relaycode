@@ -11,5 +11,6 @@
   "enableNotifications": true,
   "autoGitBranch": false,
   "gitBranchPrefix": "relay/",
-  "gitBranchTemplate": "gitCommitMsg"
+  "gitBranchTemplate": "gitCommitMsg",
+  "watchConfig": true
 }

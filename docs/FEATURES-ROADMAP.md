@@ -16,7 +16,6 @@ Watching for next patch...
 Watching for next patch...
 
 
-
 #### watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
 #### implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
 - `autoGitBranch`:  true false for on off
