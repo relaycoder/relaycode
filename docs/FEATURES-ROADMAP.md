@@ -1,17 +1,22 @@
+#### make the codebase highly DRY. refactor algorithm to be more efficient. all without causing features breaks and regressions
 
-#### should not patch write codefenced code which without path info. because sometimes it is for example
+#### made many changes , see in command `relay log` . then make sure the program is programmatic api friendly. because I think too many un exposed api necessary
+
+#### ✅ DONE: should not patch write codefenced code which without path info. because sometimes it is for example
+
 #### ✅ DONE: beside json, should also can produce relay.config.ts for best auto intellisense linting
 
 #### ✅ DONE: make relay.config.json content proper. like categorize objects
+
 #### ✅ DONE: watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
+
 #### ✅ DONE: implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
 - `autoGitBranch`:  true false for on off
     -   `gitBranchPrefix`: user can customize wether it is {gitCommitMsg} or it is {uuid} .
     -   **On Successful transaction:** `git checkout -b relay/gitCommitMsg`.
 
-
-
 #### ✅ DONE: some cli aliases just doesnt work like relaycode -v etc
+
 #### ✅ DONE: do not show reasoning in relay log cli command. replace by showing promptSummary
 
 #### ✅ DONE: this field in .relaycode log should be placed below created date
@@ -19,6 +24,7 @@ gitCommitMsg:
 promptSummary:
 
 #### all-or-nothing vs
+
 #### DONE: do not fire notification on skipped uuid
 
 Starting clipboard watcher (polling every 2000ms)
@@ -28,9 +34,13 @@ Skipping patch: uuid 'a6311de1-b844-4861-9c8e-a9d70de792f4' has already been pro
 
 
 #### ✅ DONE: relay git commit
+
 #### VERIFY: make sure clipboard is working in linux
+
 #### ✅ DONE: should be abble to parse yaml without codefence
+
 #### ✅ DONE: user prompt summary in yaml for .relaycode log
+
 #### words level chalk
 
 #### Automated Correction Prompting (The "Feedback Loop")

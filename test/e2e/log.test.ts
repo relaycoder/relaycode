@@ -51,10 +51,9 @@ describe('e2e/log', () => {
         expect(output).toContain('Committed Transactions (most recent first):');
         expect(output).toContain(`- UUID: ${uuid}`);
         expect(output).toContain('Date:');
-        expect(output).toContain('Reasoning:');
-        expect(output).toContain(`- ${reasoning}`);
+        // Reasoning is no longer shown by default in log output
         expect(output).toContain('Changes:');
-        expect(output).toContain(`- write: ${testFile}`);
+        expect(output).toContain(`- write:  ${testFile}`);
     });
 
     it('should display multiple transactions in reverse chronological order', async () => {
@@ -82,7 +81,7 @@ describe('e2e/log', () => {
         expect(indexOfUuid2).toBeGreaterThan(-1);
         // uuid2 is more recent, so it should appear first (lower index)
         expect(indexOfUuid2).toBeLessThan(indexOfUuid1);
-        expect(output).toContain(`- write: src/first.ts`);
+        expect(output).toContain(`- write:  src/first.ts`);
     });
 
     it('should correctly display a transaction with multiple operations', async () => {
@@ -103,8 +102,8 @@ describe('e2e/log', () => {
 
         expect(output).toContain(`- UUID: ${uuid}`);
         const changesSection = output.slice(output.indexOf('Changes:'));
-        expect(changesSection).toContain('- write: src/main.ts');
-        expect(changesSection).toContain('- write: src/new.ts');
+        expect(changesSection).toContain('- write:  src/main.ts');
+        expect(changesSection).toContain('- write:  src/new.ts');
         expect(changesSection).toContain('- delete: src/to-delete.ts');
     });
 });

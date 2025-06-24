@@ -2,8 +2,9 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import chalk from 'chalk';
 import { Config, PatchStrategy } from '../src/types';
-import { CONFIG_FILE_NAME } from '../src/utils/constants';
+import { CONFIG_FILE_NAME_JSON } from '../src/utils/constants';
 import { logger } from '../src/utils/logger';
 import { processPatch } from '../src/core/transaction';
 import { parseLLMResponse } from '../src/core/parser';
@@ -30,6 +31,8 @@ export interface E2ETestContext {
 }
 
 export const setupE2ETest = async (options: { withTsconfig?: boolean } = {}): Promise<E2ETestContext> => {
+    chalk.level = 0; // Disable colors for all tests
+
     const testDir = await setupTestDirectory();
 
     if (options.withTsconfig) {
@@ -130,21 +133,84 @@ export async function runProcessPatch(
 }
 
 
+// Helper function to deep merge objects
+const deepMerge = (target: any, source: any): any => {
+    const result = { ...target };
+    for (const key in source) {
+        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+            result[key] = deepMerge(target[key] || {}, source[key]);
+        } else {
+            result[key] = source[key];
+        }
+    }
+    return result;
+};
+
 export const createTestConfig = async (cwd: string, overrides: Partial<Config> = {}): Promise<Config> => {
     const defaultConfig: Config = {
         projectId: 'test-project',
-        clipboardPollInterval: 100,
-        approvalMode: 'auto',
-        approvalOnErrorCount: 0,
-        linter: `bun -e "process.exit(0)"`, // A command that always succeeds
-        preCommand: '',
-        postCommand: '',
-        logLevel: 'info',
-        preferredStrategy: 'auto',
-        enableNotifications: false,
+        core: {
+            logLevel: 'info',
+            enableNotifications: false,
+            watchConfig: true,
+        },
+        watcher: {
+            clipboardPollInterval: 100,
+            preferredStrategy: 'auto',
+        },
+        patch: {
+            approvalMode: 'auto',
+            approvalOnErrorCount: 0,
+            linter: `bun -e "process.exit(0)"`, // A command that always succeeds
+            preCommand: '',
+            postCommand: '',
+        },
+        git: {
+            autoGitBranch: false,
+            gitBranchPrefix: 'relay/',
+            gitBranchTemplate: 'gitCommitMsg',
+        },
     };
-    const config = { ...defaultConfig, ...overrides };
-    await fs.writeFile(path.join(cwd, CONFIG_FILE_NAME), JSON.stringify(config, null, 2));
+    
+    // Handle legacy flat config overrides by mapping them to the new nested structure
+    const normalizedOverrides: any = { ...overrides };
+    
+    // Map flat properties to nested structure for backward compatibility
+    const flatToNestedMapping: Record<string, string> = {
+        'approvalMode': 'patch.approvalMode',
+        'approvalOnErrorCount': 'patch.approvalOnErrorCount',
+        'linter': 'patch.linter',
+        'preCommand': 'patch.preCommand',
+        'postCommand': 'patch.postCommand',
+        'clipboardPollInterval': 'watcher.clipboardPollInterval',
+        'preferredStrategy': 'watcher.preferredStrategy',
+        'logLevel': 'core.logLevel',
+        'enableNotifications': 'core.enableNotifications',
+        'watchConfig': 'core.watchConfig',
+        'autoGitBranch': 'git.autoGitBranch',
+        'gitBranchPrefix': 'git.gitBranchPrefix',
+        'gitBranchTemplate': 'git.gitBranchTemplate',
+    };
+    
+    for (const [flatKey, nestedPath] of Object.entries(flatToNestedMapping)) {
+        if (flatKey in normalizedOverrides) {
+            const value = normalizedOverrides[flatKey];
+            delete normalizedOverrides[flatKey];
+            
+            const pathParts = nestedPath.split('.');
+            let current = normalizedOverrides;
+            for (let i = 0; i < pathParts.length - 1; i++) {
+                if (!current[pathParts[i]]) {
+                    current[pathParts[i]] = {};
+                }
+                current = current[pathParts[i]];
+            }
+            current[pathParts[pathParts.length - 1]] = value;
+        }
+    }
+    
+    const config = deepMerge(defaultConfig, normalizedOverrides);
+    await fs.writeFile(path.join(cwd, CONFIG_FILE_NAME_JSON), JSON.stringify(config, null, 2));
     return config;
 };
 

@@ -3,9 +3,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { initCommand } from '../../src/commands/init';
 import { setupE2ETest, E2ETestContext, createTestFile } from '../test.util';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
+import { CONFIG_FILE_NAME_TS, CONFIG_FILE_NAME_JSON, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
 import { ConfigSchema } from '../../src/types';
 import { logger } from '../../src/utils/logger';
+import { findConfig, findConfigPath } from '../../src/core/config';
 
 describe('e2e/init', () => {
     let context: E2ETestContext;
@@ -22,19 +23,19 @@ describe('e2e/init', () => {
         await initCommand(context.testDir.path);
 
         // Check for config file
-        const configPath = path.join(context.testDir.path, CONFIG_FILE_NAME);
-        const configExists = await fs.access(configPath).then(() => true).catch(() => false);
-        expect(configExists).toBe(true);
+        const configPath = await findConfigPath(context.testDir.path);
+        expect(configPath).toBeTruthy();
+        expect(configPath).toBe(path.join(context.testDir.path, CONFIG_FILE_NAME_TS));
 
-        const configContent = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(configContent);
+        // Read config using the findConfig function to handle TypeScript files
+        const config = await findConfig(context.testDir.path);
+        expect(config).toBeTruthy();
         
         // Validate against schema to check defaults
-        const parsedConfig = ConfigSchema.parse(config);
-        expect(parsedConfig.projectId).toBe(path.basename(context.testDir.path));
-        expect(parsedConfig.clipboardPollInterval).toBe(2000);
-        expect(parsedConfig.approvalMode).toBe('auto');
-        expect(parsedConfig.linter).toBe('bun tsc --noEmit');
+        expect(config!.projectId).toBe(path.basename(context.testDir.path));
+        expect(config!.watcher.clipboardPollInterval).toBe(2000);
+        expect(config!.patch.approvalMode).toBe('auto');
+        expect(config!.patch.linter).toBe('bun tsc --noEmit');
 
         // Check for state directory
         const stateDirPath = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
@@ -56,10 +57,9 @@ describe('e2e/init', () => {
 
         await initCommand(context.testDir.path);
 
-        const configPath = path.join(context.testDir.path, CONFIG_FILE_NAME);
-        const configContent = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(configContent);
-        expect(config.projectId).toBe(pkgName);
+        const config = await findConfig(context.testDir.path);
+        expect(config).toBeTruthy();
+        expect(config!.projectId).toBe(pkgName);
     });
 
     it('should append to existing .gitignore', async () => {
@@ -87,11 +87,15 @@ describe('e2e/init', () => {
 
     it('should not overwrite an existing relaycode.config.json', async () => {
         const customConfig = { projectId: 'custom', customField: true };
-        await createTestFile(context.testDir.path, CONFIG_FILE_NAME, JSON.stringify(customConfig));
+        await createTestFile(context.testDir.path, CONFIG_FILE_NAME_JSON, JSON.stringify(customConfig));
 
         await initCommand(context.testDir.path);
 
-        const configContent = await fs.readFile(path.join(context.testDir.path, CONFIG_FILE_NAME), 'utf-8');
+        // Should still find the JSON config and not overwrite it
+        const configPath = await findConfigPath(context.testDir.path);
+        expect(configPath).toBe(path.join(context.testDir.path, CONFIG_FILE_NAME_JSON));
+        
+        const configContent = await fs.readFile(path.join(context.testDir.path, CONFIG_FILE_NAME_JSON), 'utf-8');
         const config = JSON.parse(configContent);
         expect(config.projectId).toBe('custom');
         expect(config.customField).toBe(true);

@@ -22,7 +22,16 @@
     }
   },
   "include": [
-    // "test"
+    // "test",
+    "src/core/config.ts",
+    "src/core/parser.ts",
+    "src/commands/log.ts",
+    "src/commands/init.ts",
+    "src/commands/revert.ts",
+    "test/test.util.ts",
+    "test/e2e/init.test.ts",
+    "test/e2e/log.test.ts",
+    "test/e2e/revert.test.ts"
   ],
   "ignore": {
     "useGitignore": true,
@@ -40,13 +49,13 @@
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
       "REQUIREMENT.md",
-      "test",
-      "src/utils"
+      // "test",
+      // "src/utils"
       // "test/e2e/patcher.test.ts",
       // "test/e2e/transaction.test.ts",
       // "test/e2e/watch.test.ts",
       // "test/e2e/init.test.ts",
-      // "test/fixtures"
+      "test/fixtures"
       // "test/unit",
       // "src/utils"
     ]

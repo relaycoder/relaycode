@@ -310,12 +310,12 @@ describe('e2e/transaction', () => {
         const preCommandFile = path.join(context.testDir.path, 'pre.txt');
         const postCommandFile = path.join(context.testDir.path, 'post.txt');
     
-        // Use node directly as it's more reliable cross-platform
+        // Use bun to create files as it's more reliable in this environment
         await runProcessPatch(
             context,
             {
-                preCommand: `node -e "require('fs').writeFileSync('${preCommandFile.replace(/\\/g, '\\\\')}', '')"`,
-                postCommand: `node -e "require('fs').writeFileSync('${postCommandFile.replace(/\\/g, '\\\\')}', '')"`,
+                preCommand: `bun -e "await Bun.write('${preCommandFile}', '')"`,
+                postCommand: `bun -e "await Bun.write('${postCommandFile}', '')"`,
             },
             [{ type: 'edit', path: testFile, content: 'new content' }]
         );

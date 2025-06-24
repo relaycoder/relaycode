@@ -164,7 +164,9 @@ export const parseLLMResponse = (rawText: string): ParsedLLMResponse | null => {
                         patchStrategy = parsedStrategy.data;
                         strategyProvided = true;
                     } else {
-                        logger.debug(`Skipping unquoted header with 2 words where the second is not a strategy: "${headerLine}"`);
+                        // If the second word is not a valid strategy, treat the entire header as a file path
+                        filePath = headerLine;
+                        logger.debug(`Treating entire header as file path since second word is not a valid strategy: "${headerLine}"`);
                     }
                 } else if (parts.length > 2) {
                     logger.debug(`Skipping unquoted header with more than 2 words: "${headerLine}"`);

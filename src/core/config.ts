@@ -50,6 +50,9 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
           format: 'esm',
           // We bundle all dependencies into the temp file to avoid module resolution
           // issues when node executes the config from the /tmp directory.
+          alias: {
+            'relaycode': path.resolve(process.cwd(), 'src/index.ts')
+          },
         });
 
         importPath = tempFile;
