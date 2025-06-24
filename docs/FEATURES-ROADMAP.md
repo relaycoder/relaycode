@@ -2,7 +2,7 @@
 
 #### should be no type of any/unknown
 
-#### VERIFY: add -y tag in `relay git commit y` also add y to more necessary another commands
+#### ✅ DONE: add -y tag in `relay git commit y` also add y to more necessary another commands
 
 #### VERIFY: useful action buttons in system notifications
 
@@ -10,7 +10,7 @@
 
 #### ✅ DONE: make the codebase highly DRY for super less code. refactor algorithm to be more efficient. all without causing features breaks and regressions
 
-#### DONE: made many changes , see in command `relay log` . then make sure the program is programmatic api friendly. because I think too many un exposed api necessary
+#### ✅ DONE: made many changes , see in command `relay log` . then make sure the program is programmatic api friendly. because I think too many un exposed api necessary
 
 #### ✅ DONE: should not patch write codefenced code which without path info. because sometimes it is for example
 
