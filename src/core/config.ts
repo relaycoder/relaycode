@@ -36,17 +36,9 @@ export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Con
 export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
     const config = {
         projectId,
-        clipboardPollInterval: 2000,
-        approvalMode: 'auto' as const,
-        approvalOnErrorCount: 0,
-        linter: 'bun tsc --noEmit',
-        preCommand: '',
-        postCommand: '',
-        preferredStrategy: 'auto' as const,
-        enableNotifications: true,
     };
     
-    // Ensure the schema defaults are applied, including for logLevel
+    // Ensure the schema defaults are applied for nested objects
     const validatedConfig = ConfigSchema.parse(config);
 
     const configPath = path.join(cwd, CONFIG_FILE_NAME);

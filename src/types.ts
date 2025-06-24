@@ -4,21 +4,37 @@ export const LogLevelNameSchema = z.enum(['silent', 'error', 'warn', 'info', 'de
 export type LogLevelName = z.infer<typeof LogLevelNameSchema>;
 
 // Schema for relaycode.config.json
-export const ConfigSchema = z.object({
-  projectId: z.string().min(1),
+const CoreConfigSchema = z.object({
   logLevel: LogLevelNameSchema,
+  enableNotifications: z.boolean().default(true),
+  watchConfig: z.boolean().default(true),
+});
+
+const WatcherConfigSchema = z.object({
   clipboardPollInterval: z.number().int().positive().default(2000),
+  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
+});
+
+const PatchConfigSchema = z.object({
   approvalMode: z.enum(['auto', 'manual']).default('auto'),
   approvalOnErrorCount: z.number().int().min(0).default(0),
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
-  preferredStrategy: z.enum(['auto', 'replace', 'new-unified', 'multi-search-replace']).default('auto'),
-  enableNotifications: z.boolean().default(true),
+});
+
+const GitConfigSchema = z.object({
   autoGitBranch: z.boolean().default(false),
   gitBranchPrefix: z.string().default('relay/'),
   gitBranchTemplate: z.enum(['uuid', 'gitCommitMsg']).default('gitCommitMsg'),
-  watchConfig: z.boolean().default(true),
+});
+
+export const ConfigSchema = z.object({
+  projectId: z.string().min(1),
+  core: CoreConfigSchema.default({}),
+  watcher: WatcherConfigSchema.default({}),
+  patch: PatchConfigSchema.default({}),
+  git: GitConfigSchema.default({}),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

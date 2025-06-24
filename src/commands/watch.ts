@@ -8,7 +8,7 @@ import { Config } from '../types';
 import fs from 'fs';
 import path from 'path';
 
-const getSystemPrompt = (projectId: string, preferredStrategy: Config['preferredStrategy']): string => {
+const getSystemPrompt = (projectId: string, preferredStrategy: Config['watcher']['preferredStrategy']): string => {
     const header = `
 ✅ relaycode is watching for changes.
 
@@ -165,7 +165,7 @@ Repeat this block for each replacement.
     const strategyDetails = strategyDetailsMap[preferredStrategy] ?? strategyDetailsMap.auto;
 
     return [header, intro, syntax, strategyDetails, otherOps, finalSteps, footer].filter(Boolean).join('\n');
-}
+};
 
 export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
@@ -179,13 +179,13 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
       clipboardWatcher.stop();
     }
 
-    logger.setLevel(config.logLevel);
-    logger.debug(`Log level set to: ${config.logLevel}`);
-    logger.debug(`Preferred strategy set to: ${config.preferredStrategy}`);
+    logger.setLevel(config.core.logLevel);
+    logger.debug(`Log level set to: ${config.core.logLevel}`);
+    logger.debug(`Preferred strategy set to: ${config.watcher.preferredStrategy}`);
 
-    logger.log(getSystemPrompt(config.projectId, config.preferredStrategy));
+    logger.log(getSystemPrompt(config.projectId, config.watcher.preferredStrategy));
 
-    clipboardWatcher = createClipboardWatcher(config.clipboardPollInterval, async (content) => {
+    clipboardWatcher = createClipboardWatcher(config.watcher.clipboardPollInterval, async (content) => {
       logger.info('New clipboard content detected. Attempting to parse...');
       const parsedResponse = parseLLMResponse(content);
 
@@ -234,7 +234,7 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
   startServices(initialConfig);
 
   // Watch for changes after initial setup
-  if (initialConfig.watchConfig) {
+  if (initialConfig.core.watchConfig) {
     logger.info('Configuration file watching is enabled.');
     configWatcher = fs.watch(configPath, handleConfigChange);
   } else {

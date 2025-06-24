@@ -1,16 +1,24 @@
 {
   "projectId": "relaycode",
-  "logLevel": "info",
-  "clipboardPollInterval": 2000,
-  "approvalMode": "auto",
-  "approvalOnErrorCount": 0,
-  "linter": "bun tsc -b --noEmit",
-  "preCommand": "",
-  "postCommand": "",
-  "preferredStrategy": "auto",
-  "enableNotifications": true,
-  "autoGitBranch": false,
-  "gitBranchPrefix": "relay/",
-  "gitBranchTemplate": "gitCommitMsg",
-  "watchConfig": true
+  "core": {
+    "logLevel": "info",
+    "enableNotifications": true,
+    "watchConfig": true
+  },
+  "watcher": {
+    "clipboardPollInterval": 2000,
+    "preferredStrategy": "auto"
+  },
+  "patch": {
+    "approvalMode": "auto",
+    "approvalOnErrorCount": 0,
+    "linter": "bun tsc -b --noEmit",
+    "preCommand": "",
+    "postCommand": ""
+  },
+  "git": {
+    "autoGitBranch": false,
+    "gitBranchPrefix": "relay/",
+    "gitBranchTemplate": "gitCommitMsg"
+  }
 }

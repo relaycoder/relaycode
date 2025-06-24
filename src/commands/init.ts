@@ -13,12 +13,10 @@ Configuration file created: ${chalk.cyan(CONFIG_FILE_NAME)}
 Project ID: ${chalk.cyan(projectId)}
 
 ${chalk.bold('Next steps:')}
-${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME)} to customize settings like ${chalk.yellow("'preferredStrategy'")} to control how the AI generates code patches.
-   - ${chalk.yellow("'auto'")} (default): The AI can choose the best patch strategy.
-   - ${chalk.yellow("'new-unified'")}: Forces the AI to use diffs, great for most changes.
-   - ${chalk.yellow("'replace'")}: Forces the AI to replace entire files, good for new files or small changes.
-   - ${chalk.yellow("'multi-search-replace'")}: Forces the AI to perform precise search and replace operations.
-   - For Git users, enable ${chalk.yellow("'autoGitBranch'")} to create a new branch for each transaction.
+${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME)} to customize settings. The config is organized into sections:
+   - In ${chalk.yellow("'watcher'")}, you can set ${chalk.yellow("'preferredStrategy'")} to control AI patch generation ('auto', 'new-unified', 'multi-search-replace', etc.).
+   - In ${chalk.yellow("'git'")}, you can enable ${chalk.yellow("'git.autoGitBranch'")} to create a new branch for each transaction.
+   - In ${chalk.yellow("'patch'")}, you can configure the linter, pre/post commands, and approval behavior.
 
 ${chalk.gray('2.')} Run ${chalk.magenta("'relay watch'")} in your terminal. This will start the service and display the system prompt tailored to your configuration.
 

@@ -8,7 +8,7 @@ import chalk from 'chalk';
 
 export const applyCommand = async (filePath: string, cwd: string = process.cwd()): Promise<void> => {
     const config = await loadConfigOrExit(cwd);
-    logger.setLevel(config.logLevel);
+    logger.setLevel(config.core.logLevel);
 
     let content: string;
     const absoluteFilePath = path.resolve(cwd, filePath);

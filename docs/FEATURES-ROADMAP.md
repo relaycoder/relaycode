@@ -16,8 +16,11 @@ Watching for next patch...
 Watching for next patch...
 
 
-#### watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
-#### implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
+#### beside json, we can also produce relay.config.ts for best auto intellisense linting
+
+#### make relay.config.json content proper. like categorize objects
+#### ✅ DONE: watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
+#### ✅ DONE: implement **What:** Introduce a configuration option to enable Git-aware operations. When enabled, each transaction would automatically create a new branch.
 - `autoGitBranch`:  true false for on off
     -   `gitBranchPrefix`: user can customize wether it is {gitCommitMsg} or it is {uuid} .
     -   **On Successful transaction:** `git checkout -b relay/gitCommitMsg`.

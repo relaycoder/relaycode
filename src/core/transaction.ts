@@ -110,14 +110,14 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 
     // Notify if coming from watch mode, now that we know it's a new patch.
     if (notifyOnStart) {
-        notifyPatchDetected(config.projectId, config.enableNotifications);
+        notifyPatchDetected(config.projectId, config.core.enableNotifications);
         logger.success(`Valid patch detected for project '${chalk.cyan(config.projectId)}'. Processing...`);
     }
 
     // 2. Pre-flight checks
-    if (config.preCommand) {
-        logger.log(`  - Running pre-command: ${chalk.magenta(config.preCommand)}`);
-        const { exitCode, stderr } = await executeShellCommand(config.preCommand, cwd);
+    if (config.patch.preCommand) {
+        logger.log(`  - Running pre-command: ${chalk.magenta(config.patch.preCommand)}`);
+        const { exitCode, stderr } = await executeShellCommand(config.patch.preCommand, cwd);
         if (exitCode !== 0) {
             logger.error(`Pre-command failed with exit code ${chalk.red(exitCode)}, aborting transaction.`);
             if (stderr) logger.error(`Stderr: ${stderr}`);
@@ -172,9 +172,9 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         });
 
         // Run post-command
-        if (config.postCommand) {
-            logger.log(`  - Running post-command: ${chalk.magenta(config.postCommand)}`);
-            const postResult = await executeShellCommand(config.postCommand, cwd);
+        if (config.patch.postCommand) {
+            logger.log(`  - Running post-command: ${chalk.magenta(config.patch.postCommand)}`);
+            const postResult = await executeShellCommand(config.patch.postCommand, cwd);
             if (postResult.exitCode !== 0) {
                 logger.error(`Post-command failed with exit code ${chalk.red(postResult.exitCode)}.`);
                 if (postResult.stderr) logger.error(`Stderr: ${postResult.stderr}`);
@@ -192,23 +192,23 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         logger.log(`Checks completed in ${chalk.gray(`${checksDuration.toFixed(2)}ms`)}`);
 
         // Check for approval
-        const finalErrorCount = await getErrorCount(config.linter, cwd);
+        const finalErrorCount = await getErrorCount(config.patch.linter, cwd);
         logger.log(`  - Final linter error count: ${finalErrorCount > 0 ? chalk.red(finalErrorCount) : chalk.green(finalErrorCount)}`);
         
         let isApproved: boolean;
-        if (config.approvalMode === 'auto') { // Auto mode allows conditional auto-approval
-            const canAutoApprove = finalErrorCount <= config.approvalOnErrorCount;
+        if (config.patch.approvalMode === 'auto') { // Auto mode allows conditional auto-approval
+            const canAutoApprove = finalErrorCount <= config.patch.approvalOnErrorCount;
 
             if (canAutoApprove) {
                 logger.success('  - Changes automatically approved based on your configuration.');
                 isApproved = true;
             } else {
-                notifyApprovalRequired(config.projectId, config.enableNotifications);
+                notifyApprovalRequired(config.projectId, config.core.enableNotifications);
                 isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
             }
         } else { // Manual mode always requires user approval
             logger.warn('Manual approval required because "approvalMode" is set to "manual".');
-            notifyApprovalRequired(config.projectId, config.enableNotifications);
+            notifyApprovalRequired(config.projectId, config.core.enableNotifications);
             isApproved = await prompter('Changes applied. Do you want to approve and commit them? (y/N)');
         }
 
@@ -217,11 +217,11 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
-            notifySuccess(uuid, config.enableNotifications);
+            notifySuccess(uuid, config.core.enableNotifications);
 
-            if (config.autoGitBranch) {
+            if (config.git.autoGitBranch) {
                 let branchNameSegment = '';
-                if (config.gitBranchTemplate === 'gitCommitMsg' && stateFile.gitCommitMsg) {
+                if (config.git.gitBranchTemplate === 'gitCommitMsg' && stateFile.gitCommitMsg) {
                     branchNameSegment = stateFile.gitCommitMsg;
                 } else {
                     branchNameSegment = stateFile.uuid;
@@ -237,7 +237,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
                     .slice(0, 70); // Truncate
             
                 if (sanitizedSegment) {
-                    const branchName = `${config.gitBranchPrefix}${sanitizedSegment}`;
+                    const branchName = `${config.git.gitBranchPrefix}${sanitizedSegment}`;
                     logger.info(`Creating and switching to new git branch: ${chalk.magenta(branchName)}`);
                     const command = `git checkout -b "${branchName}"`;
                     const result = await executeShellCommand(command, cwd);
@@ -256,6 +256,6 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         }
     } catch (error) {
         const reason = getErrorMessage(error);
-        await rollbackTransaction(cwd, uuid, snapshot, reason, config.enableNotifications);
+        await rollbackTransaction(cwd, uuid, snapshot, reason, config.core.enableNotifications);
     }
 };
