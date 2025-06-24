@@ -1,4 +1,4 @@
-#### add -y tag in `relay git commit y` also add y to more necessary another commands
+#### VERIFY: add -y tag in `relay git commit y` also add y to more necessary another commands
 
 #### useful action buttons in system notifications
 
