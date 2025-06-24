@@ -13,24 +13,24 @@ export const formatTransactionDetails = (
     tx: StateFile,
     options: { showOperations?: boolean, showSpacing?: boolean, showReasoning?: boolean } = {}
 ): string[] => {
-    const lines: string[] = [];
-    lines.push(`- ${chalk.bold('UUID')}: ${chalk.gray(tx.uuid)}`);
-    lines.push(`  ${chalk.bold('Date')}: ${new Date(tx.createdAt).toLocaleString()}`);
-    if (tx.promptSummary) {
-        lines.push(`  ${chalk.bold('Prompt Summary')}: ${tx.promptSummary}`);
-    }
-    if (tx.gitCommitMsg) {
-        lines.push(`  ${chalk.bold('Git Commit')}: "${tx.gitCommitMsg}"`);
-    }
-    if ((options.showReasoning ?? true) && tx.reasoning && tx.reasoning.length > 0) {
+    const { showOperations, showSpacing, showReasoning = true } = options;
+    const lines: string[] = [
+        `- ${chalk.bold('UUID')}: ${chalk.gray(tx.uuid)}`,
+        `  ${chalk.bold('Date')}: ${new Date(tx.createdAt).toLocaleString()}`,
+    ];
+
+    if (tx.promptSummary) lines.push(`  ${chalk.bold('Prompt Summary')}: ${tx.promptSummary}`);
+    if (tx.gitCommitMsg) lines.push(`  ${chalk.bold('Git Commit')}: "${tx.gitCommitMsg}"`);
+
+    if (showReasoning && tx.reasoning && tx.reasoning.length > 0) {
         lines.push(`  ${chalk.bold('Reasoning')}:`);
         tx.reasoning.forEach(r => lines.push(`    - ${r}`));
     }
-    if (options.showOperations && tx.operations && tx.operations.length > 0) {
+    if (showOperations && tx.operations && tx.operations.length > 0) {
         lines.push(`  ${chalk.bold('Changes')}:`);
         tx.operations.forEach(op => lines.push(`    - ${opToString(op)}`));
     }
-    if (options.showSpacing) {
+    if (showSpacing) {
         lines.push(''); // Newline for spacing
     }
     return lines;
