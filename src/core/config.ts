@@ -1,24 +1,26 @@
 import { z } from 'zod';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { build } from 'esbuild';
+import os from 'os';
 import { Config, ConfigSchema, RelayCodeConfigInput } from '../types';
 import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
 import chalk from 'chalk';
 
 export const findConfigPath = async (cwd: string = process.cwd()): Promise<string | null> => {
-    for (const fileName of CONFIG_FILE_NAMES) {
-        const configPath = path.join(cwd, fileName);
-        try {
-            await fs.access(configPath);
-            return configPath;
-        } catch (error) {
-            if (!isEnoentError(error)) {
-                // ignore other errors for now to keep searching
-            }
-        }
+  for (const fileName of CONFIG_FILE_NAMES) {
+    const configPath = path.join(cwd, fileName);
+    try {
+      await fs.access(configPath);
+      return configPath;
+    } catch (error) {
+      if (!isEnoentError(error)) {
+        // ignore other errors for now to keep searching
+      }
     }
-    return null;
+  }
+  return null;
 };
 
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
@@ -28,13 +30,40 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
   }
   try {
     let configJson: RelayCodeConfigInput;
-    if (configPath.endsWith('.json')) {
+    if (configPath.endsWith('.json')) { // Handle JSON config
       const fileContent = await fs.readFile(configPath, 'utf-8');
       configJson = JSON.parse(fileContent);
-    } else {
-      // For .ts or .js files, use dynamic import with cache-busting
-      const module = await import(`${configPath}?t=${Date.now()}`);
-      configJson = module.default;
+    } else { // Handle .ts or .js config
+      let importPath = configPath;
+      let tempDir: string | null = null;
+
+      // If it's a TypeScript file, we need to transpile it to JS first.
+      if (configPath.endsWith('.ts')) {
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-'));
+        const tempFile = path.join(tempDir, 'relaycode.config.mjs');
+
+        await build({
+          entryPoints: [configPath],
+          outfile: tempFile,
+          bundle: true,
+          platform: 'node',
+          format: 'esm',
+          packages: 'external', // Keep node_modules external to avoid bundling them
+        });
+
+        importPath = tempFile;
+      }
+
+      try {
+        // Use dynamic import with a cache-busting query parameter
+        const module = await import(`${importPath}?t=${Date.now()}`);
+        configJson = module.default;
+      } finally {
+        // Clean up the temporary directory if it was created
+        if (tempDir) {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        }
+      }
     }
     return ConfigSchema.parse(configJson);
   } catch (error) {
@@ -49,47 +78,47 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
 };
 
 export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Config> => {
-    const config = await findConfig(cwd);
-    if (!config) {
-        logger.error(`Configuration file ('${chalk.cyan('relaycode.config.ts')}', '.js', or '.json') not found.`);
-        logger.info(`Please run ${chalk.magenta("'relay init'")} to create one.`);
-        process.exit(1);
-    }
-    return config;
+  const config = await findConfig(cwd);
+  if (!config) {
+    logger.error(`Configuration file ('${chalk.cyan('relaycode.config.ts')}', '.js', or '.json') not found.`);
+    logger.info(`Please run ${chalk.magenta("'relay init'")} to create one.`);
+    process.exit(1);
+  }
+  return config;
 };
 
 export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
-    const config: RelayCodeConfigInput = { projectId };
+  const config: RelayCodeConfigInput = { projectId };
 
-    // Ensure the schema defaults are applied for nested objects
-    const validatedConfig = ConfigSchema.parse(config);
+  // Ensure the schema defaults are applied for nested objects
+  const validatedConfig = ConfigSchema.parse(config);
 
-    const tsConfigContent = `import { defineConfig } from 'relaycode';
+  const tsConfigContent = `import { defineConfig } from 'relaycode';
 
 export default defineConfig(${JSON.stringify({ projectId }, null, 2)});
 `;
 
-    const configPath = path.join(cwd, CONFIG_FILE_NAME_TS);
-    await fs.writeFile(configPath, tsConfigContent);
+  const configPath = path.join(cwd, CONFIG_FILE_NAME_TS);
+  await fs.writeFile(configPath, tsConfigContent);
 
-    return validatedConfig;
+  return validatedConfig;
 };
 
 export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
-    const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
-    await fs.mkdir(stateDirPath, { recursive: true });
+  const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
+  await fs.mkdir(stateDirPath, { recursive: true });
 };
 
 export const getProjectId = async (cwd: string = process.cwd()): Promise<string> => {
-    try {
-        const pkgJsonPath = path.join(cwd, 'package.json');
-        const fileContent = await fs.readFile(pkgJsonPath, 'utf-8');
-        const pkgJson = JSON.parse(fileContent);
-        if (pkgJson.name && typeof pkgJson.name === 'string') {
-            return pkgJson.name;
-        }
-    } catch (e) {
-        // Ignore if package.json doesn't exist or is invalid
+  try {
+    const pkgJsonPath = path.join(cwd, 'package.json');
+    const fileContent = await fs.readFile(pkgJsonPath, 'utf-8');
+    const pkgJson = JSON.parse(fileContent);
+    if (pkgJson.name && typeof pkgJson.name === 'string') {
+      return pkgJson.name;
     }
-    return path.basename(cwd);
+  } catch (e) {
+    // Ignore if package.json doesn't exist or is invalid
+  }
+  return path.basename(cwd);
 };

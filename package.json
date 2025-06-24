@@ -25,13 +25,14 @@
     "dev": "bun run src/cli.ts",
     "prepublishOnly": "bun run build",
     "bundle": "repomix && sudo rm -rf docs/repomix-output.md && clear",
-    "publish": "npm version patch && bun publish && bun update -g"
+    "publish": "git push && npm version patch && bun publish && bun update -g"
   },
   "dependencies": {
     "chalk": "^5.4.1",
     "clipboardy": "^4.0.0",
     "commander": "^12.1.0",
     "diff-apply": "^1.0.6",
+    "esbuild": "^0.25.5",
     "js-yaml": "^4.1.0",
     "toasted-notifier": "^10.1.0",
     "uuid": "^9.0.1",
