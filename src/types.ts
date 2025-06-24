@@ -38,6 +38,9 @@ export const ConfigSchema = z.object({
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
+export type RelayCodeConfigInput = z.input<typeof ConfigSchema>;
+export const defineConfig = (config: RelayCodeConfigInput): RelayCodeConfigInput => config;
+
 export const PatchStrategySchema = z.enum([
   'replace',
   'new-unified',

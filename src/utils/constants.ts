@@ -1,7 +1,10 @@
 export const APP_NAME = 'Relaycode';
 export const COMMAND_NAME = 'relay';
 
-export const CONFIG_FILE_NAME = 'relaycode.config.json';
+export const CONFIG_FILE_NAME_JSON = 'relaycode.config.json';
+export const CONFIG_FILE_NAME_TS = 'relaycode.config.ts';
+export const CONFIG_FILE_NAME_JS = 'relaycode.config.js';
+export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_TS, CONFIG_FILE_NAME_JS, CONFIG_FILE_NAME_JSON];
 export const STATE_DIRECTORY_NAME = '.relaycode';
 export const GITIGNORE_FILE_NAME = '.gitignore';
 export const UNDONE_DIRECTORY_NAME = 'undone';

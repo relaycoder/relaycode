@@ -1,6 +1,6 @@
 // Core logic
 export { createClipboardWatcher } from './core/clipboard';
-export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit } from './core/config';
+export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit, findConfigPath } from './core/config';
 export { 
     applyOperations, 
     createSnapshot, 

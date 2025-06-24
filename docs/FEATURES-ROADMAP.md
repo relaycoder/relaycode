@@ -16,7 +16,7 @@ Watching for next patch...
 Watching for next patch...
 
 
-#### beside json, we can also produce relay.config.ts for best auto intellisense linting
+#### beside json, should also can produce relay.config.ts for best auto intellisense linting
 
 #### make relay.config.json content proper. like categorize objects
 #### ✅ DONE: watch config can be configurable to on or off in relaycode.config.json because watch looping happens when tying to patch relaycode.config.json
@@ -30,7 +30,7 @@ Watching for next patch...
 #### ✅ DONE: some cli aliases just doesnt work like relaycode -v etc
 #### ✅ DONE: do not show reasoning in relay log cli command. replace by showing promptSummary
 
-#### this field in .relaycode log should be placed below created date
+#### ✅ DONE: this field in .relaycode log should be placed below created date
 gitCommitMsg:
 promptSummary:
 

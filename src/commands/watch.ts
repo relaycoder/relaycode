@@ -1,9 +1,8 @@
-import { findConfig, loadConfigOrExit } from '../core/config';
+import { findConfig, loadConfigOrExit, findConfigPath } from '../core/config';
 import { createClipboardWatcher } from '../core/clipboard';
 import { parseLLMResponse } from '../core/parser';
 import { processPatch } from '../core/transaction';
 import { logger } from '../utils/logger';
-import { CONFIG_FILE_NAME } from '../utils/constants'
 import { Config } from '../types';
 import fs from 'fs';
 import path from 'path';
@@ -169,7 +168,6 @@ Repeat this block for each replacement.
 
 export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop: () => void }> => {
   let clipboardWatcher: ReturnType<typeof createClipboardWatcher> | null = null;
-  const configPath = path.resolve(cwd, CONFIG_FILE_NAME);
   let configWatcher: fs.FSWatcher | null = null;
   let debounceTimer: NodeJS.Timeout | null = null;
 
@@ -216,7 +214,7 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
           logger.success('Configuration reloaded. Restarting services...');
           startServices(newConfig);
         } else {
-          logger.error(`${CONFIG_FILE_NAME} is invalid or has been deleted. Services paused.`);
+          logger.error(`Configuration file is invalid or has been deleted. Services paused.`);
           if (clipboardWatcher) {
             clipboardWatcher.stop();
             clipboardWatcher = null;
@@ -230,12 +228,13 @@ export const watchCommand = async (cwd: string = process.cwd()): Promise<{ stop:
 
   // Initial startup
   const initialConfig = await loadConfigOrExit(cwd);
+  const configPath = await findConfigPath(cwd);
   logger.success('Configuration loaded. Starting relaycode watch...');
   startServices(initialConfig);
 
   // Watch for changes after initial setup
-  if (initialConfig.core.watchConfig) {
-    logger.info('Configuration file watching is enabled.');
+  if (initialConfig.core.watchConfig && configPath) {
+    logger.info(`Configuration file watching is enabled for ${path.basename(configPath)}.`);
     configWatcher = fs.watch(configPath, handleConfigChange);
   } else {
     logger.info('Configuration file watching is disabled. Changes to config will require a restart to take effect.');

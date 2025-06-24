@@ -1,23 +1,48 @@
 import { z } from 'zod';
 import path from 'path';
 import { promises as fs } from 'fs';
-import { Config, ConfigSchema } from '../types';
-import { CONFIG_FILE_NAME, STATE_DIRECTORY_NAME } from '../utils/constants';
+import { Config, ConfigSchema, RelayCodeConfigInput } from '../types';
+import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
 import chalk from 'chalk';
 
+export const findConfigPath = async (cwd: string = process.cwd()): Promise<string | null> => {
+    for (const fileName of CONFIG_FILE_NAMES) {
+        const configPath = path.join(cwd, fileName);
+        try {
+            await fs.access(configPath);
+            return configPath;
+        } catch (error) {
+            if (!isEnoentError(error)) {
+                // ignore other errors for now to keep searching
+            }
+        }
+    }
+    return null;
+};
+
 export const findConfig = async (cwd: string = process.cwd()): Promise<Config | null> => {
-  const configPath = path.join(cwd, CONFIG_FILE_NAME);
+  const configPath = await findConfigPath(cwd);
+  if (!configPath) {
+    return null;
+  }
   try {
-    const fileContent = await fs.readFile(configPath, 'utf-8');
-    const configJson = JSON.parse(fileContent);
+    let configJson: RelayCodeConfigInput;
+    if (configPath.endsWith('.json')) {
+      const fileContent = await fs.readFile(configPath, 'utf-8');
+      configJson = JSON.parse(fileContent);
+    } else {
+      // For .ts or .js files, use dynamic import with cache-busting
+      const module = await import(`${configPath}?t=${Date.now()}`);
+      configJson = module.default;
+    }
     return ConfigSchema.parse(configJson);
   } catch (error) {
     if (isEnoentError(error)) {
       return null;
     }
     if (error instanceof z.ZodError) {
-      throw new Error(`Invalid configuration in ${CONFIG_FILE_NAME}: ${error.message}`);
+      throw new Error(`Invalid configuration in ${path.basename(configPath)}: ${error.message}`);
     }
     throw error;
   }
@@ -26,7 +51,7 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
 export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Config> => {
     const config = await findConfig(cwd);
     if (!config) {
-        logger.error(`Configuration file '${chalk.cyan(CONFIG_FILE_NAME)}' not found.`);
+        logger.error(`Configuration file ('${chalk.cyan('relaycode.config.ts')}', '.js', or '.json') not found.`);
         logger.info(`Please run ${chalk.magenta("'relay init'")} to create one.`);
         process.exit(1);
     }
@@ -34,15 +59,18 @@ export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Con
 };
 
 export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
-    const config = {
-        projectId,
-    };
-    
+    const config: RelayCodeConfigInput = { projectId };
+
     // Ensure the schema defaults are applied for nested objects
     const validatedConfig = ConfigSchema.parse(config);
 
-    const configPath = path.join(cwd, CONFIG_FILE_NAME);
-    await fs.writeFile(configPath, JSON.stringify(validatedConfig, null, 2));
+    const tsConfigContent = `import { defineConfig } from 'relaycode';
+
+export default defineConfig(${JSON.stringify({ projectId }, null, 2)});
+`;
+
+    const configPath = path.join(cwd, CONFIG_FILE_NAME_TS);
+    await fs.writeFile(configPath, tsConfigContent);
 
     return validatedConfig;
 };
