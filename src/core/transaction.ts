@@ -16,6 +16,15 @@ type ProcessPatchOptions = {
     yes?: boolean;
 };
 
+const countLineDiff = (baseLines: string[], newLines: string[]): number => {
+    const baseSet = new Set(baseLines);
+    let diff = 0;
+    for (const line of newLines) {
+        if (!baseSet.has(line)) diff++;
+    }
+    return diff;
+}
+
 const calculateLineChanges = (
     op: FileOperation,
     snapshot: FileSnapshot,
@@ -43,20 +52,10 @@ const calculateLineChanges = (
     
     // This is a simplified diff, for a more accurate count a real diff algorithm is needed,
     // but this is fast and good enough for a summary.
-    const oldSet = new Set(oldLines);
-    const newSet = new Set(newLines);
-    
-    let added = 0;
-    for (const line of newLines) {
-        if (!oldSet.has(line)) added++;
-    }
-
-    let removed = 0;
-    for (const line of oldLines) {
-        if (!newSet.has(line)) removed++;
-    }
-    
-    return { added, removed };
+    return {
+        added: countLineDiff(oldLines, newLines),
+        removed: countLineDiff(newLines, oldLines),
+    };
 };
 
 const logCompletionSummary = (

@@ -11,43 +11,24 @@ const LogLevels = {
 
 let currentLogLevel: LogLevelName = 'info'; // Default level
 
+const logMessage = (level: keyof typeof LogLevels, message: string, colorFn?: (s: string) => string) => {
+    if (LogLevels[level] <= LogLevels[currentLogLevel]) {
+        console.log(colorFn ? colorFn(message) : message);
+    }
+}
+
 export const logger = {
   setLevel: (level: LogLevelName) => {
     if (level in LogLevels) {
       currentLogLevel = level;
     }
   },
-  info: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.blue(message));
-    }
-  },
-  success: (message: string) => {
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(chalk.green(message));
-    }
-  },
-  warn: (message: string) => {
-    if (LogLevels.warn <= LogLevels[currentLogLevel]) {
-      console.log(chalk.yellow(message));
-    }
-  },
-  error: (message: string) => {
-    if (LogLevels.error <= LogLevels[currentLogLevel]) {
-      console.log(chalk.red(message));
-    }
-  },
-  debug: (message: string) => {
-    if (LogLevels.debug <= LogLevels[currentLogLevel]) {
-      console.log(chalk.gray(message));
-    }
-  },
-  log: (message: string) => {
-    // General log, treat as info
-    if (LogLevels.info <= LogLevels[currentLogLevel]) {
-      console.log(message);
-    }
-  },
+  info: (message: string) => logMessage('info', message, chalk.blue),
+  success: (message: string) => logMessage('info', message, chalk.green),
+  warn: (message: string) => logMessage('warn', message, chalk.yellow),
+  error: (message: string) => logMessage('error', message, chalk.red),
+  debug: (message: string) => logMessage('debug', message, chalk.gray),
+  log: (message: string) => logMessage('info', message),
   prompt: (message: string) => {
     // Prompts are special and should be shown unless silent
         if (currentLogLevel !== 'silent') {
