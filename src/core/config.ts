@@ -48,7 +48,8 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
           bundle: true,
           platform: 'node',
           format: 'esm',
-          packages: 'external', // Keep node_modules external to avoid bundling them
+          // We bundle all dependencies into the temp file to avoid module resolution
+          // issues when node executes the config from the /tmp directory.
         });
 
         importPath = tempFile;
