@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
-import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX, STATE_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME } from '../utils/constants';
+import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX, STATE_DIRECTORY_NAME, TRANSACTIONS_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
 import { fileExists, safeRename } from '../utils/fs';
 
@@ -12,12 +12,12 @@ const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAM
 
 export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
   const fileName = isPending ? `${uuid}${PENDING_STATE_FILE_SUFFIX}` : `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getStateDirectory(cwd), fileName);
+  return path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME, fileName);
 };
 
 export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
   const fileName = `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getStateDirectory(cwd), UNDONE_DIRECTORY_NAME, fileName);
+  return path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME, fileName);
 };
 
 const getUuidFromFileName = (fileName: string): string => {
@@ -30,15 +30,15 @@ const isUUID = (str: string): boolean => {
 
 // Helper to get all committed transaction file names.
 const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
-    const stateDir = getStateDirectory(cwd);
+    const transactionsDir = path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME);
     try {
-        await fs.access(stateDir);
+        await fs.access(transactionsDir);
     } catch (e) {
         return null;
     }
-    const files = await fs.readdir(stateDir);
+    const files = await fs.readdir(transactionsDir);
     const transactionFiles = files.filter(f => f.endsWith(COMMITTED_STATE_FILE_SUFFIX) && !f.endsWith(PENDING_STATE_FILE_SUFFIX));
-    return { stateDir, files: transactionFiles };
+    return { stateDir: transactionsDir, files: transactionFiles };
 };
 
 const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string | Date }) => {
@@ -47,7 +47,7 @@ const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string 
 
 // Ensure state directory exists with caching for performance
 const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = getStateDirectory(cwd);
+  const dirPath = path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME);
   if (!stateDirectoryCache.has(dirPath)) {
     await fs.mkdir(dirPath, { recursive: true });
     stateDirectoryCache.set(dirPath, true);

@@ -25,7 +25,7 @@ describe('e2e/apply', () => {
 
         // We need an initialized project for apply to work
         await createTestConfig(context.testDir.path);
-        await fs.mkdir(path.join(context.testDir.path, STATE_DIRECTORY_NAME), { recursive: true });
+        await fs.mkdir(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions'), { recursive: true });
         
         // Clear logs from setup
         logs.length = 0;
@@ -53,7 +53,7 @@ describe('e2e/apply', () => {
         const modifiedContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
         expect(modifiedContent).toBe(newContent);
 
-        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`);
         const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(true);
     });
@@ -92,7 +92,7 @@ describe('e2e/apply', () => {
         expect(deletedFileExists).toBe(false);
 
         // Verify state file
-        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`);
         const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(true);
     });
@@ -111,7 +111,7 @@ describe('e2e/apply', () => {
         const patchFilePath = path.join(context.testDir.path, 'invalid.txt');
         await fs.writeFile(patchFilePath, 'this is not a valid patch');
 
-        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
+        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions');
         const filesBefore = await fs.readdir(stateDir);
 
         await applyCommand(patchFilePath, {}, context.testDir.path);

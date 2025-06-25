@@ -19,7 +19,7 @@ describe('e2e/log', () => {
     it('should display a warning when the state directory does not exist', async () => {
         await logCommand(context.testDir.path, logs);
         const output = logs.join('\n');
-        expect(output).toContain("State directory '.relaycode' not found. No logs to display.");
+        expect(output).toContain("State directory '.relay' not found. No logs to display.");
         expect(output).toContain("Run 'relay init' to initialize the project.");
     });
 

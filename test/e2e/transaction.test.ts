@@ -36,7 +36,7 @@ describe('e2e/transaction', () => {
         expect(finalContent).toBe(newContent);
 
         // Check state file was committed
-        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`);
         
         // Try multiple times with a small delay to check if the file exists
         let stateFileExists = false;
@@ -233,7 +233,7 @@ describe('e2e/transaction', () => {
         expect(deletedFileExists).toBe(false);
 
         // State file should have been committed with the deleted file content
-        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`);
+        const stateFilePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`);
         const stateFileExists = await fs.access(stateFilePath).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(true);
     });
@@ -273,7 +273,7 @@ describe('e2e/transaction', () => {
         expect(finalContent).toBe(badContent);
 
         // State file should have been committed
-        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(true);
     });
 
@@ -282,7 +282,7 @@ describe('e2e/transaction', () => {
         const newContent = 'console.log("final content");';
 
         // Create an orphaned pending file
-        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
+        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions');
         await fs.mkdir(stateDir, { recursive: true });
         const orphanedPendingFile = path.join(stateDir, `${uuid}.pending.yml`);
         const orphanedState = { uuid, message: 'this is from a crashed run' };
@@ -333,7 +333,7 @@ describe('e2e/transaction', () => {
     it('should create a pending file during transaction and remove it on rollback', async () => {
         const uuid = uuidv4();
     
-        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
+        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions');
         const pendingPath = path.join(stateDir, `${uuid}.pending.yml`);
     
         // Make sure the directory exists

@@ -20,7 +20,7 @@ describe('e2e/revert', () => {
         context = await setupE2ETest();
         // We need an initialized project for revert to work
         await createTestConfig(context.testDir.path);
-        await fs.mkdir(path.join(context.testDir.path, STATE_DIRECTORY_NAME), { recursive: true });
+        await fs.mkdir(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions'), { recursive: true });
     });
 
     afterEach(async () => {
@@ -58,8 +58,8 @@ describe('e2e/revert', () => {
         expect(t2!.reasoning.join(' ')).toContain(`Reverting transaction ${t1_uuid}`);
 
         // 5. Verify T1 and T2 state files exist
-        const t1StatePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${t1_uuid}.yml`);
-        const t2StatePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${t2!.uuid}.yml`);
+        const t1StatePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${t1_uuid}.yml`);
+        const t2StatePath = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${t2!.uuid}.yml`);
         expect(await fs.access(t1StatePath).then(() => true).catch(() => false)).toBe(true);
         expect(await fs.access(t2StatePath).then(() => true).catch(() => false)).toBe(true);
     });
@@ -144,7 +144,7 @@ describe('e2e/revert', () => {
         expect(content).toBe(v2);
 
         // 4. Check that we have 3 state files
-        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME);
+        const stateDir = path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions');
         const files = (await fs.readdir(stateDir)).filter(f => f.endsWith('.yml'));
         expect(files.length).toBe(3);
     });

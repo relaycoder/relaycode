@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import os from 'os';
 import { createRequire } from 'module';
 import { Config, ConfigSchema, RelayCodeConfigInput } from '../types';
-import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS } from '../utils/constants';
+import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS, TRANSACTIONS_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
 import chalk from 'chalk';
 
@@ -34,7 +34,7 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
 
   if (configPath.endsWith('.ts')) {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-'));
-    const tempFile = path.join(tempDir, 'relaycode.config.mjs');
+    const tempFile = path.join(tempDir, 'relay.config.mjs');
 
     const buildOptions: Parameters<typeof build>[0] = {
       entryPoints: [configPath],
@@ -107,7 +107,7 @@ export const findConfig = async (cwd: string = process.cwd()): Promise<Config | 
 export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Config> => {
   const config = await findConfig(cwd);
   if (!config) {
-    logger.error(`Configuration file ('${chalk.cyan('relaycode.config.ts')}', '.js', or '.json') not found.`);
+    logger.error(`Configuration file ('${chalk.cyan(CONFIG_FILE_NAME_TS)}', '.js', or '.json') not found.`);
     logger.info(`Please run ${chalk.magenta("'relay init'")} to create one.`);
     process.exit(1);
   }
@@ -134,6 +134,10 @@ export default defineConfig(${JSON.stringify({ projectId }, null, 2)});
 export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
   const stateDirPath = path.join(cwd, STATE_DIRECTORY_NAME);
   await fs.mkdir(stateDirPath, { recursive: true });
+  
+  // Also create the transactions subdirectory
+  const transactionsDirPath = path.join(stateDirPath, TRANSACTIONS_DIRECTORY_NAME);
+  await fs.mkdir(transactionsDirPath, { recursive: true });
 };
 
 export const getProjectId = async (cwd: string = process.cwd()): Promise<string> => {

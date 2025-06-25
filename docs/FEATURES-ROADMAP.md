@@ -1,3 +1,8 @@
+####
+1. change config naming from relaycode.config.json/ts to relay.config.json/ts
+2. change .relaycode dir to .relay
+3. all yaml transaction should be in .relay/transactions/{uuid}.yaml also undone in .relay/transactions/undone
+
 #### ✅ DONE: separate file system ops in another file for differentiate concerns
 
 #### ✅ DONE: should be no type of any/unknown
