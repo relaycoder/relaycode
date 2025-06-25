@@ -35,16 +35,25 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'relaycode-'));
     const tempFile = path.join(tempDir, 'relaycode.config.mjs');
 
-    await build({
+    const buildOptions: Parameters<typeof build>[0] = {
       entryPoints: [configPath],
       outfile: tempFile,
       bundle: true,
       platform: 'node',
       format: 'esm',
-      alias: {
-        'relaycode': path.resolve(process.cwd(), 'src/index.ts')
-      },
-    });
+    };
+
+    // When running in development (e.g., `bun run src/cli.ts`), the running file is in `src`.
+    // We need to alias 'relaycode' to the local `src/index.ts` so esbuild can find it without it being "installed".
+    // When running as a published package, the file is in `dist`, and we should let esbuild resolve
+    // 'relaycode' from node_modules like a regular package.
+    if (import.meta.url.includes('/src/')) {
+        buildOptions.alias = {
+            'relaycode': path.resolve(process.cwd(), 'src/index.ts')
+        }
+    }
+    
+    await build(buildOptions);
     importPath = tempFile;
   }
 

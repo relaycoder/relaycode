@@ -1,11 +1,11 @@
-import { defineConfig } from './src/types';
+import { defineConfig } from 'relaycode';
 
 export default defineConfig({
   projectId: 'relaycode',
   core: {
     logLevel: 'info',
     enableNotifications: true,
-    watchConfig: true,
+    watchConfig: false,
   },
   watcher: {
     clipboardPollInterval: 2000,
