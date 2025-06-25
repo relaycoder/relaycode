@@ -45,12 +45,14 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
 
     // When running in development (e.g., `bun run src/cli.ts`), the running file is in `src`.
     // We need to alias 'relaycode' to the local `src/index.ts` so esbuild can find it without it being "installed".
-    // When running as a published package, the file is in `dist`, and we should let esbuild resolve
-    // 'relaycode' from node_modules like a regular package.
+    // When running as a published package, we mark 'relaycode' as external, so that the bundled config
+    // will still contain `import ... from 'relaycode'` and Node's `import()` can resolve it from the user's `node_modules`.
     if (import.meta.url.includes('/src/')) {
         buildOptions.alias = {
             'relaycode': path.resolve(process.cwd(), 'src/index.ts')
         }
+    } else {
+        buildOptions.external = ['relaycode'];
     }
     
     await build(buildOptions);
