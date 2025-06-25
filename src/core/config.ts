@@ -58,10 +58,11 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
             const resolvedPath = require.resolve('relaycode');
             buildOptions.alias = { 'relaycode': resolvedPath };
         } catch (e) {
-            // This is a fallback in case resolution fails, though it's unlikely.
-            // Revert to the previous behavior that caused the bug, but warn the user.
-            logger.warn("Could not resolve the 'relaycode' package. The config file may fail to load.");
-            buildOptions.external = ['relaycode'];
+            // This is a fallback in case resolution fails. With the package.json `exports` fix,
+            // this is much less likely to be hit. We are removing the `external` option to prevent a crash.
+            // If the user's config *does* import from 'relaycode', esbuild will now fail with a
+            // clearer error message instead of the cryptic runtime error.
+            logger.warn(`Could not resolve the 'relaycode' package. The config file may fail to load if it uses relaycode imports.`);
         }
     }
     
