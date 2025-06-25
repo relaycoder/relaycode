@@ -3,6 +3,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { build } from 'esbuild';
 import os from 'os';
+import { createRequire } from 'module';
 import { Config, ConfigSchema, RelayCodeConfigInput } from '../types';
 import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
@@ -43,16 +44,25 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
       format: 'esm',
     };
 
-    // When running in development (e.g., `bun run src/cli.ts`), the running file is in `src`.
-    // We need to alias 'relaycode' to the local `src/index.ts` so esbuild can find it without it being "installed".
-    // When running as a published package, we mark 'relaycode' as external, so that the bundled config
-    // will still contain `import ... from 'relaycode'` and Node's `import()` can resolve it from the user's `node_modules`.
+    // To handle `import { ... } from 'relaycode'` in user configs, we need to tell esbuild where to find it.
+    // When running in dev, we point it to our local `src/index.ts`.
+    // When running as an installed package, we use `require.resolve` to find the installed package's entry point.
+    // This ensures esbuild bundles our library into the temporary config file, making it self-contained.
     if (import.meta.url.includes('/src/')) {
         buildOptions.alias = {
             'relaycode': path.resolve(process.cwd(), 'src/index.ts')
         }
     } else {
-        buildOptions.external = ['relaycode'];
+        const require = createRequire(import.meta.url);
+        try {
+            const resolvedPath = require.resolve('relaycode');
+            buildOptions.alias = { 'relaycode': resolvedPath };
+        } catch (e) {
+            // This is a fallback in case resolution fails, though it's unlikely.
+            // Revert to the previous behavior that caused the bug, but warn the user.
+            logger.warn("Could not resolve the 'relaycode' package. The config file may fail to load.");
+            buildOptions.external = ['relaycode'];
+        }
     }
     
     await build(buildOptions);
