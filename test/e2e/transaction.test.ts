@@ -77,7 +77,7 @@ describe('e2e/transaction', () => {
     it('should require manual approval if linter errors exceed approvalOnErrorCount', async () => {
         await runProcessPatch(
             context,
-            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'bun tsc --noEmit' },
+            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'bun tsc -b --noEmit' },
             [{ type: 'edit', path: testFile, content: 'const x: string = 123;' }],
             { prompter: async () => false }
         );
@@ -265,7 +265,7 @@ describe('e2e/transaction', () => {
 
         const { uuid } = await runProcessPatch(
             context,
-            { approvalMode: 'auto', approvalOnErrorCount: 1, linter: 'bun tsc --noEmit' },
+            { approvalMode: 'auto', approvalOnErrorCount: 1, linter: 'bun tsc -b --noEmit' },
             [{ type: 'edit', path: testFile, content: badContent }]
         );
         
@@ -494,16 +494,18 @@ describe('e2e/transaction', () => {
         await createTestFile(context.testDir.path, originalFilePath, originalServiceContent);
 
         // First, a unified diff to rename a property and add a new one.
-        const unifiedDiff = `--- a/src/service.ts
-+++ b/src/service.ts
-@@ -2,5 +2,6 @@
-     name = "MyService";
+        const unifiedDiff = `--- a/${originalFilePath}
++++ b/${originalFilePath}
+@@ -1,5 +1,6 @@
+class Service {
+-     name = "MyService";
 +    name = "MyAwesomeService";
 +    version = "1.0";
      
      execute() {
          console.log("Executing service");
-`;
+    }
+}`;
 
         // Then, a multi-search-replace to update a method on the *result* of the first patch.
         const multiSearchReplaceDiff = `
