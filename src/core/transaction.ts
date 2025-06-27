@@ -5,7 +5,7 @@ import { createSnapshot, restoreSnapshot, applyOperations } from './executor';
 import chalk from 'chalk';
 import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
 import { getConfirmation } from '../utils/prompt'
-import { requestApprovalWithNotification, notifyFailure, notifySuccess, notifyPatchDetected } from '../utils/notifier';
+import { requestApprovalWithNotification, notifyFailure, notifySuccess, notifyPatchDetected, notifyRollbackFailure } from '../utils/notifier';
 
 type Prompter = (question: string) => Promise<boolean>;
 
@@ -75,17 +75,21 @@ const rollbackTransaction = async (cwd: string, uuid: string, snapshot: FileSnap
     if (isError) {
         logger.warn(`Rolling back changes: ${reason}`);
     }
+
+    let rollbackSuccessful = false;
     try {
         await restoreSnapshot(snapshot, cwd);
         logger.success('  - Files restored to original state.');
+        rollbackSuccessful = true;
     } catch (error) {
         logger.error(`Fatal: Rollback failed: ${getErrorMessage(error)}`);
+        notifyRollbackFailure(uuid, enableNotifications);
         // Do not rethrow; we're already in a final error handling state.
     } finally {
         try {
             await deletePendingState(cwd, uuid);
             logger.info(`↩️ Transaction ${chalk.gray(uuid)} rolled back.`);
-            if (isError) {
+            if (isError && rollbackSuccessful) {
                 notifyFailure(uuid, enableNotifications);
             }
         } catch (cleanupError) {

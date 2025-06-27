@@ -48,5 +48,6 @@ export {
     requestApprovalWithNotification,
     notifySuccess,
     notifyFailure,
+    notifyRollbackFailure,
 } from './utils/notifier';
 export { STATE_DIRECTORY_NAME, CONFIG_FILE_NAMES } from './utils/constants';

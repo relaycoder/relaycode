@@ -72,6 +72,10 @@ export const notifyFailure = createNotifier(
     (uuid: string) => `Patch \`${uuid}\` failed and was rolled back.`
 );
 
+export const notifyRollbackFailure = createNotifier(
+    (uuid: string) => `CRITICAL: Rollback for patch \`${uuid}\` FAILED. Manual intervention required.`
+);
+
 export const requestApprovalWithNotification = (
     projectId: string,
     enableNotifications: boolean = true
