@@ -30,6 +30,7 @@ export * from './types';
 
 // Utils
 export { executeShellCommand, getErrorCount } from './utils/shell';
+export { getTypeScriptErrorCount } from './utils/typescript';
 export {
     deleteFile,
     readFileContent,

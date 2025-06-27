@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import { logger } from './logger';
+import { getTypeScriptErrorCount } from './typescript';
 
 type ExecutionResult = {
   exitCode: number;
@@ -59,6 +60,20 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
     return 0;
   }
   
+  if (linterCommand.includes('tsc')) {
+    logger.debug('Detected tsc command, attempting to use TypeScript API for error counting.');
+    try {
+      const apiErrorCount = getTypeScriptErrorCount(linterCommand, cwd);
+      if (apiErrorCount !== -1) {
+        logger.debug(`TypeScript API returned ${apiErrorCount} errors.`);
+        return apiErrorCount;
+      }
+    } catch (e) {
+      logger.debug(`TypeScript API error counting threw an exception, falling back to shell execution. Error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    logger.debug('TypeScript API error counting failed or was not applicable, falling back to shell execution.');
+  }
+
   const { exitCode, stderr } = await executeShellCommand(linterCommand, cwd);
   if (exitCode === 0) return 0;
 
