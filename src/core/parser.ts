@@ -17,7 +17,7 @@ import {
 import { getErrorMessage, logger } from '../utils/logger';
 
 const CODE_BLOCK_REGEX = /```(?:\w+)?(?:\s*\/\/\s*(.*?)|\s+(.*?))?[\r\n]([\s\S]*?)[\r\n]```/g;
-const YAML_BLOCK_REGEX = /```yaml[\r\n]([\s\S]+?)```/;
+const YAML_BLOCK_REGEX = /```\s*(?:yaml|yml)[\r\n]([\s\S]+?)```/i;
 
 type ParsedHeader = {
     filePath: string;
