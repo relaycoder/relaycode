@@ -28,46 +28,62 @@ export const createSnapshot = async (filePaths: string[], cwd: string = process.
 };
 
 export const applyOperations = async (operations: FileOperation[], cwd: string = process.cwd()): Promise<Map<string, string>> => {
+  const fileStates = new Map<string, string | null>();
   const newContents = new Map<string, string>();
+
+  const getFileContent = async (filePath: string): Promise<string | null> => {
+    if (fileStates.has(filePath)) {
+      return fileStates.get(filePath) ?? null;
+    }
+    const content = await readFileContent(filePath, cwd);
+    fileStates.set(filePath, content);
+    return content;
+  };
+
   // Operations must be applied sequentially to ensure that if one fails,
   // we can roll back from a known state.
   for (const op of operations) {
     if (op.type === 'delete') {
       await deleteFile(op.path, cwd);
+      fileStates.set(op.path, null);
       continue;
     }
     if (op.type === 'rename') {
+      const content = await getFileContent(op.from);
       await renameFile(op.from, op.to, cwd);
+      fileStates.set(op.from, null);
+      if (content !== null) {
+        fileStates.set(op.to, content);
+      }
       continue;
     }
     
     let finalContent: string;
+    const currentContent = await getFileContent(op.path);
 
     if (op.patchStrategy === 'replace') {
       finalContent = op.content;
     } else {
-      // For patch strategies, apply them sequentially
-      const originalContent = await readFileContent(op.path, cwd);
-      if (originalContent === null && op.patchStrategy === 'multi-search-replace') {
+      if (currentContent === null && op.patchStrategy === 'multi-search-replace') {
         throw new Error(`Cannot use 'multi-search-replace' on a new file: ${op.path}`);
       }
 
       try {
         const diffParams = {
-          originalContent: originalContent ?? '',
+          originalContent: currentContent ?? '',
           diffContent: op.content,
         };
         
         const patcher = patchStrategies[op.patchStrategy as keyof typeof patchStrategies];
         if (!patcher) {
-          throw new Error(`Unknown patch strategy: ${op.patchStrategy}`);
+          throw new Error(`Unknown patch strategy: '${op.patchStrategy}'`);
         }
         
         const result = await patcher(diffParams);
         if (result.success) {
           finalContent = result.content;
         } else {
-          throw new Error(result.error);
+          throw new Error(`Patch failed for ${op.path}: ${result.error}`);
         }
       } catch (e) {
         throw new Error(`Error applying patch for ${op.path} with strategy '${op.patchStrategy}': ${getErrorMessage(e)}`);
@@ -75,6 +91,7 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
     }
     
     await writeFileContent(op.path, finalContent, cwd);
+    fileStates.set(op.path, finalContent);
     newContents.set(op.path, finalContent);
   }
   return newContents;

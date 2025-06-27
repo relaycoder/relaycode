@@ -1,4 +1,4 @@
-####
+#### VERIFY
 
 fire system notification on failed patch roll back
 
@@ -10,7 +10,7 @@ innacurate insertion and deletion count
 
 innacurate linter problem count. use npm lib to real check linter problems than string based.
 
-####
+#### VERIFY
 
 handle double patch code with different strategy / multiple patch operations for the same file
 
