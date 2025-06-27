@@ -120,9 +120,36 @@ export const createConfig = async (projectId: string, cwd: string = process.cwd(
   // Ensure the schema defaults are applied for nested objects
   const validatedConfig = ConfigSchema.parse(config);
 
+  const defaultConfig = ConfigSchema.parse({ projectId });
+
   const tsConfigContent = `import { defineConfig } from 'relaycode';
 
-export default defineConfig(${JSON.stringify({ projectId }, null, 2)});
+export default defineConfig({
+  projectId: '${projectId}',
+  core: {
+    logLevel: '${defaultConfig.core.logLevel}',
+    enableNotifications: ${defaultConfig.core.enableNotifications},
+    watchConfig: ${defaultConfig.core.watchConfig},
+  },
+  watcher: {
+    clipboardPollInterval: ${defaultConfig.watcher.clipboardPollInterval},
+    preferredStrategy: '${defaultConfig.watcher.preferredStrategy}',
+  },
+  patch: {
+    approvalMode: '${defaultConfig.patch.approvalMode}',
+    approvalOnErrorCount: ${defaultConfig.patch.approvalOnErrorCount},
+    linter: '${defaultConfig.patch.linter}',
+    preCommand: '${defaultConfig.patch.preCommand}',
+    postCommand: '${defaultConfig.patch.postCommand}',
+    minFileChanges: ${defaultConfig.patch.minFileChanges}, // 0 means no minimum
+    // maxFileChanges: 20, // Uncomment to set a maximum
+  },
+  git: {
+    autoGitBranch: ${defaultConfig.git.autoGitBranch},
+    gitBranchPrefix: '${defaultConfig.git.gitBranchPrefix}',
+    gitBranchTemplate: '${defaultConfig.git.gitBranchTemplate}',
+  },
+});
 `;
 
   const configPath = path.join(cwd, CONFIG_FILE_NAME_TS);

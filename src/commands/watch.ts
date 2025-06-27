@@ -7,7 +7,11 @@ import { Config } from '../types';
 import fs from 'fs';
 import path from 'path';
 
-const getSystemPrompt = (projectId: string, preferredStrategy: Config['watcher']['preferredStrategy']): string => {
+const getSystemPrompt = (
+    projectId: string,
+    preferredStrategy: Config['watcher']['preferredStrategy'],
+    patchConfig: Config['patch'],
+): string => {
     const header = `
 ✅ relaycode is watching for changes.
 
@@ -125,12 +129,29 @@ Repeat this block for each replacement.
     \`\`\`
 `;
 
+    const finalSteps_rules = [];
+    if (patchConfig.minFileChanges > 0) {
+        finalSteps_rules.push(`You must modify at least ${patchConfig.minFileChanges} file(s) in this transaction.`);
+    }
+    if (patchConfig.maxFileChanges) {
+        finalSteps_rules.push(`You must not modify more than ${patchConfig.maxFileChanges} file(s) in this transaction.`);
+    }
+
+    const finalSteps_list = [
+        'Add your step-by-step reasoning in plain text before each code block.',
+    ];
+    if (finalSteps_rules.length > 0) {
+        finalSteps_list.push(`Adhere to file limits: ${finalSteps_rules.join(' ')}`);
+    }
+    finalSteps_list.push('ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.');
+
+    const finalSteps_list_string = finalSteps_list.map((item, index) => `${index + 1}.  ${item}`).join('\n');
+
     const finalSteps = `---
 
 ### Final Steps
 
-1.  Add your step-by-step reasoning in plain text before each code block.
-2.  ALWAYS add the following YAML block at the very end of your response. Use the exact projectId shown here. Generate a new random uuid for each response.
+${finalSteps_list_string}
 
     \`\`\`yaml
     projectId: ${projectId}
@@ -175,7 +196,7 @@ export const watchCommand = async (options: { yes?: boolean } = {}, cwd: string 
     logger.debug(`Log level set to: ${config.core.logLevel}`);
     logger.debug(`Preferred strategy set to: ${config.watcher.preferredStrategy}`);
 
-    logger.log(getSystemPrompt(config.projectId, config.watcher.preferredStrategy));
+    logger.log(getSystemPrompt(config.projectId, config.watcher.preferredStrategy, config.patch));
 
     clipboardWatcher = createClipboardWatcher(config.watcher.clipboardPollInterval, async (content) => {
       logger.info('New clipboard content detected. Attempting to parse...');

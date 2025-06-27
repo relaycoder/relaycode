@@ -209,9 +209,9 @@ These ideas transform the transaction log from a simple history into a rich, que
 ---
 
 
-#########################################
+#### VERIFY
 
-min max file changes in single transaction config
+min max file changes instruction for llm in single transaction configurable through config
 
 ####
 

@@ -184,6 +184,17 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
         return;
     }
 
+    const { minFileChanges, maxFileChanges } = config.patch;
+    const operationCount = operations.length;
+    if (minFileChanges > 0 && operationCount < minFileChanges) {
+        logger.warn(`Skipping patch: Not enough file changes (expected at least ${minFileChanges}, got ${operationCount}).`);
+        return;
+    }
+    if (maxFileChanges && operationCount > maxFileChanges) {
+        logger.warn(`Skipping patch: Too many file changes (expected at most ${maxFileChanges}, got ${operationCount}).`);
+        return;
+    }
+
     // Notify if coming from watch mode, now that we know it's a new patch.
     if (notifyOnStart) {
         notifyPatchDetected(config.projectId, config.core.enableNotifications);

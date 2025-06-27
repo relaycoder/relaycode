@@ -21,6 +21,8 @@ const PatchConfigSchema = z.object({
   linter: z.string().default('bun tsc --noEmit'),
   preCommand: z.string().default(''),
   postCommand: z.string().default(''),
+  minFileChanges: z.number().int().min(0).default(0),
+  maxFileChanges: z.number().int().min(1).optional(),
 });
 
 const GitConfigSchema = z.object({
@@ -29,13 +31,23 @@ const GitConfigSchema = z.object({
   gitBranchTemplate: z.enum(['uuid', 'gitCommitMsg']).default('gitCommitMsg'),
 });
 
-export const ConfigSchema = z.object({
+const BaseConfigSchema = z.object({
   projectId: z.string().min(1),
-  core: CoreConfigSchema.default({}),
-  watcher: WatcherConfigSchema.default({}),
-  patch: PatchConfigSchema.default({}),
-  git: GitConfigSchema.default({}),
+  core: CoreConfigSchema,
+  watcher: WatcherConfigSchema,
+  patch: PatchConfigSchema,
+  git: GitConfigSchema,
 });
+
+export const ConfigSchema = BaseConfigSchema.deepPartial().extend({
+  projectId: z.string().min(1),
+}).transform(val => ({
+  projectId: val.projectId,
+  core: CoreConfigSchema.parse(val.core ?? {}),
+  watcher: WatcherConfigSchema.parse(val.watcher ?? {}),
+  patch: PatchConfigSchema.parse(val.patch ?? {}),
+  git: GitConfigSchema.parse(val.git ?? {}),
+}));
 export type Config = z.infer<typeof ConfigSchema>;
 
 export type RelayCodeConfigInput = z.input<typeof ConfigSchema>;
