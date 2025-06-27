@@ -16,14 +16,33 @@ type ProcessPatchOptions = {
     yes?: boolean;
 };
 
-const countLineDiff = (baseLines: string[], newLines: string[]): number => {
-    const baseSet = new Set(baseLines);
-    let diff = 0;
-    for (const line of newLines) {
-        if (!baseSet.has(line)) diff++;
+// Space-optimized LCS length calculation to determine line changes accurately.
+const calculateLcsLength = (a: string[], b: string[]): number => {
+    let s1 = a;
+    let s2 = b;
+    // s2 should be the shorter string to optimize space for the DP table.
+    if (s1.length < s2.length) {
+        [s1, s2] = [s2, s1];
     }
-    return diff;
-}
+    const m = s1.length;
+    const n = s2.length;
+    
+    const dp = Array(n + 1).fill(0);
+
+    for (let i = 1; i <= m; i++) {
+        let prev = 0; // stores dp[i-1][j-1]
+        for (let j = 1; j <= n; j++) {
+            const temp = dp[j]; // stores dp[i-1][j]
+            if (s1[i - 1] === s2[j - 1]) {
+                dp[j] = prev + 1;
+            } else {
+                dp[j] = Math.max(dp[j], dp[j - 1]);
+            }
+            prev = temp;
+        }
+    }
+    return dp[n];
+};
 
 const calculateLineChanges = (
     op: FileOperation,
@@ -50,11 +69,11 @@ const calculateLineChanges = (
     if (oldContent === null || oldContent === '') return { added: newLines.length, removed: 0 };
     if (newContent === null || newContent === '') return { added: 0, removed: oldLines.length };
     
-    // This is a simplified diff, for a more accurate count a real diff algorithm is needed,
-    // but this is fast and good enough for a summary.
+    // Use LCS to get a more accurate line diff count.
+    const lcsLength = calculateLcsLength(oldLines, newLines);
     return {
-        added: countLineDiff(oldLines, newLines),
-        removed: countLineDiff(newLines, oldLines),
+        added: newLines.length - lcsLength,
+        removed: oldLines.length - lcsLength,
     };
 };
 
