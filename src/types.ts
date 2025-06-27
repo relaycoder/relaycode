@@ -96,6 +96,8 @@ export const StateFileSchema = z.object({
   uuid: z.string().uuid(),
   projectId: z.string(),
   createdAt: z.string().datetime(),
+  linesAdded: z.number().int().optional(),
+  linesRemoved: z.number().int().optional(),
   gitCommitMsg: z.string().optional(),
   promptSummary: z.string().optional(),
   reasoning: z.array(z.string()),

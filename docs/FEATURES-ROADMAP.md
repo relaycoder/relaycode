@@ -225,7 +225,7 @@ retry certain part of yaml transaction
 
 relay git commit -i -y : context initial git commit prompt. when we have many git unstaged/uncommited of relay yaml... by default, we should take the earliest yaml commit message
 
-####
+#### VERIFY
 
 insertion and deletion count in yaml transaction
 

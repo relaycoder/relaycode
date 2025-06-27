@@ -271,6 +271,8 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
 
         if (isApproved) {
             stateFile.approved = true;
+            (stateFile as any).linesAdded = totalAdded;
+            (stateFile as any).linesRemoved = totalRemoved;
             await writePendingState(cwd, stateFile); // Update state with approved: true before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
