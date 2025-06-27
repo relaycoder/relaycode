@@ -1,3 +1,6 @@
+
+on failed roll back transaction, we should save the path operations for pruning the context
+
 ########################################
 
 

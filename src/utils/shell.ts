@@ -82,5 +82,6 @@ export const getErrorCount = async (linterCommand: string, cwd = process.cwd()):
   if (errorMatches && errorMatches[1]) {
     return parseInt(errorMatches[1], 10);
   }
-  return exitCode === 0 ? 0 : 1;
+  // Assume at least one error if exit code is non-zero and we can't parse stderr.
+  return 1;
 };

@@ -74,6 +74,19 @@ describe('e2e/transaction', () => {
         expect(stateFileExists).toBe(false);
     });
 
+    it('should fallback to shell execution for non-tsc linters and require approval on failure', async () => {
+        await runProcessPatch(
+            context,
+            // 'false' is a command that always exits with 1. This tests the shell fallback.
+            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'false' },
+            [{ type: 'edit', path: testFile, content: 'any content' }],
+            { prompter: async () => false } // Disapprove manually
+        );
+        
+        const finalContent = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+        expect(finalContent).toBe(originalContent); // Should be rolled back
+    });
+
     it('should require manual approval if linter errors exceed approvalOnErrorCount', async () => {
         await runProcessPatch(
             context,
