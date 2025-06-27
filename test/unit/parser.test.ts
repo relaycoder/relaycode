@@ -467,7 +467,11 @@ gitCommitMsg: ${overrides?.gitCommitMsg ?? 'feat: test commit'}
             expect(parsed).not.toBeNull();
             expect(parsed?.control.uuid).toBe(testUuid);
             expect(parsed?.reasoning.join(' ')).toBe(baseReasoning);
-            expect(parsed?.operations[0].path).toBe(filePath);
+            expect(parsed!.operations).toHaveLength(1);
+            const op = parsed!.operations[0]!;
+            if (op.type === 'write' || op.type === 'delete') {
+                expect(op.path).toBe(filePath);
+            }
         });
 
         it('should correctly extract reasoning when a non-fenced YAML block is used', () => {
@@ -487,12 +491,14 @@ gitCommitMsg: ${overrides?.gitCommitMsg ?? 'feat: test commit'}
             expect(parsed).toBeNull();
         });
 
-        it('should fail to parse if the first of two YAML blocks is not a valid control block', () => {
+        it('should successfully parse the last of multiple YAML blocks', () => {
             const exampleYaml = `- item: 1\n- item: 2`;
             const controlYaml = createYamlString();
             const response = `Example:\n\`\`\`yaml\n${exampleYaml}\n\`\`\`\nChanges:\n${codeBlock}\n\`\`\`yaml\n${controlYaml}\n\`\`\``;
             const parsed = parseLLMResponse(response);
-            expect(parsed).toBeNull();
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe(testUuid);
+            expect(parsed?.reasoning.join(' ')).toContain('Example:');
         });
     });
 });

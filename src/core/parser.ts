@@ -82,40 +82,51 @@ const inferPatchStrategy = (content: string, providedStrategy: PatchStrategy | n
 };
 
 const extractAndParseYaml = (rawText: string) => {
-    const yamlBlockMatch = rawText.match(YAML_BLOCK_REGEX);
-    let yamlText: string | null = null;
-    let textWithoutYaml = rawText;
+    // Strategy 1: Find all fenced YAML blocks and try to parse the last one.
+    const yamlBlockMatches = [...rawText.matchAll(/```\s*(?:yaml|yml)[\r\n]([\s\S]+?)```/gi)];
 
-    if (yamlBlockMatch?.[1]) {
-        yamlText = yamlBlockMatch[1];
-        textWithoutYaml = rawText.replace(YAML_BLOCK_REGEX, '').trim();
-    } else {
-        const lines = rawText.trim().split('\n');
-        let yamlStartIndex = -1;
-        const searchLimit = Math.max(0, lines.length - 20);
-        for (let i = lines.length - 1; i >= searchLimit; i--) {
-            if (lines[i]?.trim().match(/^projectId:\s*['"]?[\w.-]+['"]?$/)) {
-                yamlStartIndex = i;
-                break;
-            }
-        }
-
-        if (yamlStartIndex !== -1) {
-            yamlText = lines.slice(yamlStartIndex).join('\n');
-            textWithoutYaml = lines.slice(0, yamlStartIndex).join('\n').trim();
+    if (yamlBlockMatches.length > 0) {
+        const lastMatch = yamlBlockMatches[yamlBlockMatches.length - 1]!;
+        try {
+            const yamlContent: unknown = yaml.load(lastMatch[1]!);
+            const control = ControlYamlSchema.parse(yamlContent);
+            // Success! This is our control block.
+            const textWithoutYaml = rawText.substring(0, lastMatch.index) + rawText.substring(lastMatch.index! + lastMatch[0].length);
+            return { control, textWithoutYaml: textWithoutYaml.trim() };
+        } catch (e) {
+            // The last block was not a valid control block.
+            // We will now fall through to the non-fenced strategy, assuming the fenced block was just an example.
+            logger.debug(`Last fenced YAML block was not a valid control block, trying non-fenced. Error: ${getErrorMessage(e)}`);
         }
     }
 
-    if (!yamlText) return { control: null, textWithoutYaml: rawText };
-
-    try {
-        const yamlContent: unknown = yaml.load(yamlText);
-        const control = ControlYamlSchema.parse(yamlContent);
-        return { control, textWithoutYaml };
-    } catch (e) {
-        logger.debug(`Error parsing YAML or control schema: ${getErrorMessage(e)}`);
-        return { control: null, textWithoutYaml: rawText };
+    // Strategy 2: Look for a non-fenced block at the end.
+    const lines = rawText.trim().split('\n');
+    let yamlStartIndex = -1;
+    // Heuristic: project ID is required, so we look for that.
+    const searchLimit = Math.max(0, lines.length - 20);
+    for (let i = lines.length - 1; i >= searchLimit; i--) {
+        if (lines[i]?.trim().match(/^projectId:/)) {
+            yamlStartIndex = i;
+            break;
+        }
     }
+
+    if (yamlStartIndex !== -1) {
+        const yamlText = lines.slice(yamlStartIndex).join('\n');
+        try {
+            const yamlContent: unknown = yaml.load(yamlText);
+            const control = ControlYamlSchema.parse(yamlContent);
+            // Success!
+            const textWithoutYaml = lines.slice(0, yamlStartIndex).join('\n');
+            return { control, textWithoutYaml: textWithoutYaml.trim() };
+        } catch (e) {
+            logger.debug(`Non-fenced YAML block at the end was not a valid control block. Error: ${getErrorMessage(e)}`);
+        }
+    }
+    
+    // If both strategies fail, there's no valid control block.
+    return { control: null, textWithoutYaml: rawText };
 };
 
 const parseCodeBlock = (match: RegExpExecArray): { operation: FileOperation, fullMatch: string } | null => {
