@@ -438,7 +438,7 @@ So it should be treated as regular content, not multi-search-replace
             return `
 projectId: ${overrides?.projectId ?? 'test-project'}
 uuid: ${overrides?.uuid ?? testUuid}
-gitCommitMsg: ${overrides?.gitCommitMsg ?? 'feat: test commit'}
+gitCommitMsg: "${overrides?.gitCommitMsg ?? 'feat: test commit'}"
 `.trim();
         };
 
