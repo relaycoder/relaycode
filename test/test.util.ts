@@ -164,6 +164,7 @@ export const createTestConfig = async (cwd: string, overrides: Record<string, an
             linter: `bun -e "process.exit(0)"`, // A command that always succeeds
             preCommand: '',
             postCommand: '',
+            minFileChanges: 0,
         },
         git: {
             autoGitBranch: false,

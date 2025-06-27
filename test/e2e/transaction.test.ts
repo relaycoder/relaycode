@@ -77,7 +77,7 @@ describe('e2e/transaction', () => {
     it('should require manual approval if linter errors exceed approvalOnErrorCount', async () => {
         await runProcessPatch(
             context,
-            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'bun tsc' },
+            { approvalMode: 'auto', approvalOnErrorCount: 0, linter: 'bun tsc --noEmit' },
             [{ type: 'edit', path: testFile, content: 'const x: string = 123;' }],
             { prompter: async () => false }
         );
@@ -198,7 +198,7 @@ describe('e2e/transaction', () => {
         expect(finalContent).toBe(originalContent);
 
         // No state file should have been committed
-        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(false);
     });
 
@@ -214,7 +214,7 @@ describe('e2e/transaction', () => {
         expect(finalContent).toBe(originalContent);
 
         // No state file should have been committed
-        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(false);
     });
 
@@ -256,7 +256,7 @@ describe('e2e/transaction', () => {
         expect(restoredContent).toBe(originalDeleteContent);
 
         // No state file should have been committed
-        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+        const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
         expect(stateFileExists).toBe(false);
     });
 
@@ -265,7 +265,7 @@ describe('e2e/transaction', () => {
 
         const { uuid } = await runProcessPatch(
             context,
-            { approvalMode: 'auto', approvalOnErrorCount: 1, linter: 'bun tsc' },
+            { approvalMode: 'auto', approvalOnErrorCount: 1, linter: 'bun tsc --noEmit' },
             [{ type: 'edit', path: testFile, content: badContent }]
         );
         
@@ -396,17 +396,17 @@ describe('e2e/transaction', () => {
             expect(finalUnwritable).toBe(originalUnwritableContent);
             
             // No state file should have been committed
-            const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+            const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
             expect(stateFileExists).toBe(false);
-        } finally {
-            // Make the file writable again to allow cleanup
-            try {
-                await fs.chmod(unwritableFilePath, 0o644);
-            } catch (err) {
-                console.error('Failed to restore file permissions:', err);
+            } finally {
+                // Make the file writable again to allow cleanup
+                try {
+                    await fs.chmod(unwritableFilePath, 0o644);
+                } catch (err) {
+                    console.error('Failed to restore file permissions:', err);
+                }
             }
-        }
-    });
+        });
 
     it('should rollback gracefully if creating a file in a non-writable directory fails', async () => {
         const readonlyDir = 'src/readonly-dir';
@@ -428,12 +428,15 @@ describe('e2e/transaction', () => {
             expect(newFileExists).toBe(false);
     
             // No state file should have been committed
-            const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, `${uuid}.yml`)).then(() => true).catch(() => false);
+            const stateFileExists = await fs.access(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`)).then(() => true).catch(() => false);
             expect(stateFileExists).toBe(false);
         } finally {
             // Restore permissions for cleanup
             try {
-                await fs.chmod(readonlyDirPath, 0o755);
+                // The directory might have been removed on rollback, so check if it exists first.
+                if (await fs.access(readonlyDirPath).then(() => true).catch(() => false)) {
+                    await fs.chmod(readonlyDirPath, 0o755);
+                }
             } catch (err) {
                 console.error('Failed to restore directory permissions:', err);
             }
