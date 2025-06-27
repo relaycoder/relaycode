@@ -79,12 +79,10 @@ export const setupE2ETest = async (options: { withTsconfig?: boolean } = {}): Pr
     return { testDir, cleanup };
 };
 
-export interface TestOperation {
-    type: 'edit' | 'new' | 'delete';
-    path: string;
-    content?: string;
-    strategy?: PatchStrategy;
-}
+export type TestOperation =
+    | { type: 'edit' | 'new'; path: string; content?: string; strategy?: PatchStrategy }
+    | { type: 'delete'; path: string }
+    | { type: 'rename'; from: string; to: string };
 
 export function createLLMResponseString(
     operations: TestOperation[],
@@ -98,10 +96,18 @@ export function createLLMResponseString(
         if (op.type === 'delete') {
             return createDeleteFileBlock(op.path);
         }
+        if (op.type === 'rename') {
+            return createRenameFileBlock(op.from, op.to);
+        }
         return createFileBlock(op.path, op.content ?? '', op.strategy);
     });
 
-    const changeSummary = operations.map(op => ({ [op.type]: op.path }));
+    const changeSummary = operations.map(op => {
+        if (op.type === 'rename') {
+            return { [op.type]: `${op.from} -> ${op.to}` };
+        }
+        return { [op.type]: op.path };
+    });
 
     const response = [
         ...reasoning,
@@ -249,6 +255,15 @@ export const createFileBlock = (filePath: string, content: string, patchStrategy
 ${content}
 
 // END
+\`\`\`
+`;
+};
+
+export const createRenameFileBlock = (from: string, to: string): string => {
+    const content = JSON.stringify({ from, to }, null, 2);
+    return `
+\`\`\`json // rename-file
+${content}
 \`\`\`
 `;
 };

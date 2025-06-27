@@ -12,7 +12,7 @@ innacurate linter problem count. use npm lib to real check linter problems than 
 
 #### VERIFY
 
-handle double patch code with different strategy / multiple patch operations for the same file
+handle double patch code with different strategy / multiple patch operations for the same file. like new-unified, then multi-search-replace, then rename
 
 
 ```typescript // src/components/FileExplorerToolbar.tsx new-unified

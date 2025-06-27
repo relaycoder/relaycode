@@ -480,4 +480,75 @@ describe('e2e/transaction', () => {
         const newFileExists = await fs.access(path.join(context.testDir.path, newFilePath)).then(() => true).catch(() => false);
         expect(newFileExists).toBe(false);
     });
+
+    it('should correctly apply multiple sequential operations on the same file, including a rename', async () => {
+        const originalFilePath = 'src/service.ts';
+        const renamedFilePath = 'src/services/main-service.ts';
+        const originalServiceContent = `class Service {
+    name = "MyService";
+    
+    execute() {
+        console.log("Executing service");
+    }
+}`;
+        await createTestFile(context.testDir.path, originalFilePath, originalServiceContent);
+
+        // First, a unified diff to rename a property and add a new one.
+        const unifiedDiff = `--- a/src/service.ts
++++ b/src/service.ts
+@@ -2,5 +2,6 @@
+     name = "MyService";
++    name = "MyAwesomeService";
++    version = "1.0";
+     
+     execute() {
+         console.log("Executing service");
+`;
+
+        // Then, a multi-search-replace to update a method on the *result* of the first patch.
+        const multiSearchReplaceDiff = `
+<<<<<<< SEARCH
+-------
+        console.log("Executing service");
+=======
+        console.log(\`Executing service \${this.name} v\${this.version}\`);
+>>>>>>> REPLACE
+`;
+
+        // And finally, rename the file.
+        const { uuid } = await runProcessPatch(
+            context,
+            {},
+            [
+                { type: 'edit', path: originalFilePath, content: unifiedDiff, strategy: 'new-unified' },
+                { type: 'edit', path: originalFilePath, content: multiSearchReplaceDiff, strategy: 'multi-search-replace' },
+                { type: 'rename', from: originalFilePath, to: renamedFilePath },
+            ]
+        );
+
+        // 1. Verify file system state
+        const originalFileExists = await fs.access(path.join(context.testDir.path, originalFilePath)).then(() => true).catch(() => false);
+        expect(originalFileExists).toBe(false);
+
+        const renamedFileExists = await fs.access(path.join(context.testDir.path, renamedFilePath)).then(() => true).catch(()=> false);
+        expect(renamedFileExists).toBe(true);
+        
+        // 2. Verify final content
+        const finalContent = await fs.readFile(path.join(context.testDir.path, renamedFilePath), 'utf-8');
+        const expectedContent = `class Service {
+    name = "MyAwesomeService";
+    version = "1.0";
+    
+    execute() {
+        console.log(\`Executing service \${this.name} v\${this.version}\`);
+    }
+}`;
+        expect(finalContent.replace(/\s/g, '')).toBe(expectedContent.replace(/\s/g, ''));
+
+        // 3. Verify snapshot in state file for rollback purposes
+        const stateFileContent = await fs.readFile(path.join(context.testDir.path, STATE_DIRECTORY_NAME, 'transactions', `${uuid}.yml`), 'utf-8');
+        const stateData: any = yaml.load(stateFileContent);
+        expect(stateData.snapshot[originalFilePath]).toBe(originalServiceContent);
+        expect(stateData.snapshot[renamedFilePath]).toBe(null); // It didn't exist at snapshot time
+    });
 });

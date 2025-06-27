@@ -55,6 +55,11 @@ export const applyOperations = async (operations: FileOperation[], cwd: string =
       if (content !== null) {
         fileStates.set(op.to, content);
       }
+      // Propagate the change to newContents map if the source file was modified in this transaction
+      if (newContents.has(op.from)) {
+        newContents.set(op.to, newContents.get(op.from)!);
+        newContents.delete(op.from);
+      }
       continue;
     }
     
