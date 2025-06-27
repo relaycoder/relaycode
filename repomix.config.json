@@ -51,8 +51,8 @@
       "README.md",
       "repomix.config.json",
       "tsconfig.tsbuildinfo",
-      "REQUIREMENT.md",
-      "test"
+      "REQUIREMENT.md"
+      // "test"
       // "src/utils"
       // "test/e2e/patcher.test.ts",
       // "test/e2e/transaction.test.ts",

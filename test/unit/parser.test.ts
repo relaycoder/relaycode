@@ -426,4 +426,73 @@ So it should be treated as regular content, not multi-search-replace
             }
         });
     });
+
+    describe('YAML parsing for control block', () => {
+        const testUuid = uuidv4();
+        const filePath = 'src/test.ts';
+        const fileContent = 'const x = 1;';
+        const codeBlock = `\`\`\`typescript // ${filePath}\n${fileContent}\n\`\`\``;
+        const baseReasoning = 'Here are the changes.';
+
+        const createYamlString = (overrides?: { projectId?: string, uuid?: string, gitCommitMsg?: string }) => {
+            return `
+projectId: ${overrides?.projectId ?? 'test-project'}
+uuid: ${overrides?.uuid ?? testUuid}
+gitCommitMsg: ${overrides?.gitCommitMsg ?? 'feat: test commit'}
+`.trim();
+        };
+
+        it('should parse a standard fenced YAML block with `yaml` identifier', () => {
+            const yamlContent = createYamlString();
+            const response = `${baseReasoning}\n${codeBlock}\n\`\`\`yaml\n${yamlContent}\n\`\`\``;
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe(testUuid);
+            expect(parsed?.control.gitCommitMsg).toBe('feat: test commit');
+            expect(parsed?.reasoning.join(' ')).toBe(baseReasoning);
+        });
+
+        it('should parse a standard fenced YAML block with `yml` identifier', () => {
+            const yamlContent = createYamlString();
+            const response = `${baseReasoning}\n${codeBlock}\n\`\`\`yml\n${yamlContent}\n\`\`\``;
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe(testUuid);
+        });
+
+        it('should parse a non-fenced YAML block at the end of the response', () => {
+            const yamlContent = createYamlString();
+            const response = `${baseReasoning}\n${codeBlock}\n\n${yamlContent}`;
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            expect(parsed?.control.uuid).toBe(testUuid);
+            expect(parsed?.reasoning.join(' ')).toBe(baseReasoning);
+            expect(parsed?.operations[0].path).toBe(filePath);
+        });
+
+        it('should correctly extract reasoning when a non-fenced YAML block is used', () => {
+            const yamlContent = createYamlString();
+            const fullReasoning = `${baseReasoning}\nAnother line of reasoning.`;
+            const response = `${fullReasoning}\n${codeBlock}\n\n${yamlContent}`;
+            
+            const parsed = parseLLMResponse(response);
+            expect(parsed).not.toBeNull();
+            expect(parsed?.reasoning.join('\n')).toBe(fullReasoning);
+        });
+
+        it('should return null if a non-fenced YAML block is not at the end', () => {
+            const yamlContent = createYamlString();
+            const response = `${baseReasoning}\n\n${yamlContent}\n\n${codeBlock}`;
+            const parsed = parseLLMResponse(response);
+            expect(parsed).toBeNull();
+        });
+
+        it('should fail to parse if the first of two YAML blocks is not a valid control block', () => {
+            const exampleYaml = `- item: 1\n- item: 2`;
+            const controlYaml = createYamlString();
+            const response = `Example:\n\`\`\`yaml\n${exampleYaml}\n\`\`\`\nChanges:\n${codeBlock}\n\`\`\`yaml\n${controlYaml}\n\`\`\``;
+            const parsed = parseLLMResponse(response);
+            expect(parsed).toBeNull();
+        });
+    });
 });
