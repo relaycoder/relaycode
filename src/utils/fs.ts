@@ -14,7 +14,12 @@ export const readFileContent = async (filePath: string, cwd: string = process.cw
 };
 
 export const writeFileContent = async (filePath: string, content: string, cwd: string = process.cwd()): Promise<void> => {
-  const absolutePath = path.resolve(cwd, filePath);
+  const sanitizedPath = filePath.replace(/[/\\]+$/, '');
+  if (!sanitizedPath) {
+    console.warn(`Invalid file path (points to root directory): ${filePath}. Skipping.`);
+    return;
+  }
+  const absolutePath = path.resolve(cwd, sanitizedPath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, content, 'utf-8');
 };

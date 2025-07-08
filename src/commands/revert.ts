@@ -8,7 +8,12 @@ import { createConfirmationHandler, Prompter } from '../utils/prompt';
 import { formatTransactionDetails } from '../utils/formatters';
 import chalk from 'chalk';
 
-export const revertCommand = async (identifier?: string, options: { yes?: boolean } = {}, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
+interface RevertOptions {
+    yes?: boolean;
+    includeReverts?: boolean;
+}
+
+export const revertCommand = async (identifier?: string, options: RevertOptions = {}, cwd: string = process.cwd(), prompter?: Prompter): Promise<void> => {
     const getConfirmation = createConfirmationHandler(options, prompter);
     const config = await loadConfigOrExit(cwd);
 
@@ -32,13 +37,22 @@ export const revertCommand = async (identifier?: string, options: { yes?: boolea
     }
 
     logger.info(`Looking for ${targetDescription}...`);
-    const stateToRevert = await findStateFileByIdentifier(cwd, effectiveIdentifier);
+    const stateToRevert = await findStateFileByIdentifier(cwd, effectiveIdentifier, {
+        skipReverts: !options.includeReverts,
+    });
 
     if (!stateToRevert) {
         logger.error(`Could not find ${targetDescription}.`);
         if (isIndexSearch) {
-            const allTransactions = await readAllStateFiles(cwd); // To give a helpful count
-            logger.info(`Only ${chalk.cyan(allTransactions?.length ?? 0)} transactions exist.`);
+            const allTransactions = await readAllStateFiles(cwd, { skipReverts: false }); // Show total count including reverts
+            const nonRevertTransactions = await readAllStateFiles(cwd, { skipReverts: true });
+            const revertCount = (allTransactions?.length ?? 0) - (nonRevertTransactions?.length ?? 0);
+            
+            logger.info(`Found ${chalk.cyan(allTransactions?.length ?? 0)} total transactions.`);
+            if (revertCount > 0) {
+                logger.info(`${chalk.cyan(revertCount)} of them are revert transactions, which are skipped by default.`);
+                logger.info(`Use the ${chalk.cyan('--include-reverts')} flag to include them in the search.`);
+            }
         }
         return;
     }

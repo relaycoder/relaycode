@@ -11,7 +11,7 @@ import {
 import { revertCommand } from '../../src/commands/revert';
 import { STATE_DIRECTORY_NAME } from '../../src/utils/constants';
 import { logger } from '../../src/utils/logger';
-import { findLatestStateFile } from '../../src/core/state';
+import { findLatestStateFile, readAllStateFiles } from '../../src/core/state';
 
 describe('e2e/revert', () => {
     let context: E2ETestContext;
@@ -107,6 +107,71 @@ describe('e2e/revert', () => {
         expect(t2!.uuid).not.toBe(t1_uuid);
     });
 
+    it('should correctly revert a transaction with file creation and modification', async () => {
+        const newFilePath = 'src/components/new-file.ts';
+        const initialContent = 'export const a = 1;';
+        const modifiedContent = 'export const a = 2;';
+
+        // 1. Apply a patch with new file and modification (T1)
+        const { uuid: t1_uuid } = await runProcessPatch(
+            context, {},
+            [
+                { type: 'new', path: newFilePath, content: initialContent },
+                { type: 'edit', path: newFilePath, content: modifiedContent }
+            ]
+        );
+
+        // Verify file was created with modified content
+        const contentAfterPatch = await fs.readFile(path.join(context.testDir.path, newFilePath), 'utf-8');
+        expect(contentAfterPatch).toBe(modifiedContent);
+        
+        // 2. Revert T1
+        await revertCommand(t1_uuid, {}, context.testDir.path, async () => true);
+
+        // 3. Verify rollback (file should be deleted)
+        const newFileExistsAfterRevert = await fs.access(path.join(context.testDir.path, newFilePath)).then(() => true).catch(() => false);
+        expect(newFileExistsAfterRevert).toBe(false);
+    });
+
+    it('should correctly revert a transaction with file modification and rename', async () => {
+        const originalFilePath = 'src/original.ts';
+        const renamedFilePath = 'src/renamed.ts';
+        const originalContent = 'export const a = "v1";';
+        const modifiedContent = 'export const a = "v2";';
+
+        // Setup: create the original file
+        await createTestFile(context.testDir.path, originalFilePath, originalContent);
+
+        // 1. Apply a patch with modification and rename (T1)
+        const { uuid: t1_uuid } = await runProcessPatch(
+            context, {},
+            [
+                { type: 'edit', path: originalFilePath, content: modifiedContent },
+                { type: 'rename', from: originalFilePath, to: renamedFilePath }
+            ]
+        );
+
+        // Verify file was renamed and content is modified
+        const renamedFileExists = await fs.access(path.join(context.testDir.path, renamedFilePath)).then(() => true).catch(() => false);
+        expect(renamedFileExists).toBe(true);
+        const renamedContent = await fs.readFile(path.join(context.testDir.path, renamedFilePath), 'utf-8');
+        expect(renamedContent).toBe(modifiedContent);
+        const originalFileExists = await fs.access(path.join(context.testDir.path, originalFilePath)).then(() => true).catch(() => false);
+        expect(originalFileExists).toBe(false);
+        
+        // 2. Revert T1
+        await revertCommand(t1_uuid, {}, context.testDir.path, async () => true);
+
+        // 3. Verify rollback
+        const originalFileExistsAfterRevert = await fs.access(path.join(context.testDir.path, originalFilePath)).then(() => true).catch(() => false);
+        expect(originalFileExistsAfterRevert).toBe(true);
+        const originalContentAfterRevert = await fs.readFile(path.join(context.testDir.path, originalFilePath), 'utf-8');
+        expect(originalContentAfterRevert).toBe(originalContent);
+
+        const renamedFileExistsAfterRevert = await fs.access(path.join(context.testDir.path, renamedFilePath)).then(() => true).catch(() => false);
+        expect(renamedFileExistsAfterRevert).toBe(false);
+    });
+
     it('should log an error and do nothing if UUID does not exist', async () => {
         let errorLog = '';
         (logger as any).error = (msg: string) => { errorLog = msg; };
@@ -194,6 +259,91 @@ describe('e2e/revert', () => {
             (logger as any).error = (msg: string) => { errorLog = msg; };
             await revertCommand('99', {}, context.testDir.path, async () => true);
             expect(errorLog).toContain('Could not find the 99-th latest transaction.');
+        });
+    });
+
+    describe('revert with filtering', () => {
+        const testFile = 'src/index.ts';
+        const v1 = 'v1-original';
+        const v2 = 'v2-first-change';
+        const v3 = 'v3-second-change';
+        let t1_uuid: string, t2_uuid: string, t3_uuid_revert_t2: string;
+
+        beforeEach(async () => {
+            // Setup a history: T1 (v1->v2), T2 (v2->v3), T3 (revert T2, v3->v2)
+            await createTestFile(context.testDir.path, testFile, v1);
+
+            // T1: v1 -> v2
+            const { uuid: t1 } = await runProcessPatch(context, {}, [{ type: 'edit', path: testFile, content: v2 }]);
+            t1_uuid = t1;
+
+            // T2: v2 -> v3
+            const { uuid: t2 } = await runProcessPatch(context, {}, [{ type: 'edit', path: testFile, content: v3 }]);
+            t2_uuid = t2;
+            let content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v3);
+
+            // T3: Revert T2, bringing content from v3 -> v2
+            await revertCommand(t2_uuid, {}, context.testDir.path, async () => true);
+            const t3_state = await findLatestStateFile(context.testDir.path);
+            t3_uuid_revert_t2 = t3_state!.uuid;
+
+            // Verify starting state for tests
+            content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v2);
+            const allStates = await readAllStateFiles(context.testDir.path);
+            expect(allStates?.length).toBe(3);
+        });
+
+        it('should skip reverting a "revert" transaction and a reverted transaction by default', async () => {
+            // Attempt to revert the latest transaction. 
+            // The chronological order is T3 (revert), T2 (reverted), T1.
+            // T3 and T2 should be skipped, so T1 should be reverted.
+            await revertCommand(undefined, {}, context.testDir.path, async () => true);
+            
+            // State after revert should be v1 (reverted T1)
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v1);
+
+            const latest = await findLatestStateFile(context.testDir.path);
+            expect(latest?.reasoning.join(' ')).toContain(`Reverting transaction ${t1_uuid}`);
+        });
+
+        it('should revert the latest "revert" transaction when --include-reverts is used', async () => {
+            // Revert latest, including reverts. T3 should be reverted.
+            await revertCommand('1', { includeReverts: true }, context.testDir.path, async () => true);
+
+            // State after should be v3 (reverted the revert of T2)
+            const content = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(content).toBe(v3);
+
+            const latest = await findLatestStateFile(context.testDir.path);
+            expect(latest?.reasoning.join(' ')).toContain(`Reverting transaction ${t3_uuid_revert_t2}`);
+        });
+
+        it('should fail to find the 2nd transaction when filtering is on', async () => {
+            // With default filtering, the only revertable transaction is T1.
+            // So asking for the 2nd should fail.
+            let errorLog = '';
+            (logger as any).error = (msg: string) => { errorLog += msg; };
+            (logger as any).info = (msg: string) => { errorLog += msg; }; // Also capture info for the message
+            await revertCommand('2', {}, context.testDir.path, async () => true);
+            
+            expect(errorLog).toContain('Could not find the 2-th latest transaction.');
+            expect(errorLog).toContain('are revert transactions, which are skipped by default');
+        });
+
+        it('should correctly identify the 2nd transaction when including reverts', async () => {
+            // When including reverts, the order is T3, T2, T1. The 2nd is T2.
+            // Reverting T2 will apply its snapshot, which contains v2. The file is already v2.
+            await revertCommand('2', { includeReverts: true }, context.testDir.path, async () => true);
+            const contentAfterRevert = await fs.readFile(path.join(context.testDir.path, testFile), 'utf-8');
+            expect(contentAfterRevert).toBe(v2);
+
+            const allStates = await readAllStateFiles(context.testDir.path);
+            expect(allStates?.length).toBe(4); // T1, T2, T3, and the new revert of T2
+            const latest = await findLatestStateFile(context.testDir.path);
+            expect(latest?.reasoning.join(' ')).toContain(`Reverting transaction ${t2_uuid}`);
         });
     });
 });

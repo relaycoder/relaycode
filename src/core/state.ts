@@ -10,6 +10,23 @@ const stateDirectoryCache = new Map<string, boolean>();
 
 const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
 
+export const isRevertTransaction = (state: StateFile): boolean => {
+    return state.reasoning.some(r => r.startsWith('Reverting transaction'));
+}
+
+export const getRevertedTransactionUuid = (state: StateFile): string | null => {
+    if (!isRevertTransaction(state)) {
+        return null;
+    }
+    for (const r of state.reasoning) {
+        const match = r.match(/^Reverting transaction ([\w-]+)\./);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    return null;
+}
+
 export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
   const fileName = isPending ? `${uuid}${PENDING_STATE_FILE_SUFFIX}` : `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
   return path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME, fileName);
@@ -112,7 +129,11 @@ export const readStateFile = async (cwd: string, uuid: string): Promise<StateFil
   }
 };
 
-export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<StateFile[] | null> => {
+interface ReadStateFilesOptions {
+    skipReverts?: boolean;
+}
+
+export const readAllStateFiles = async (cwd: string = process.cwd(), options: ReadStateFilesOptions = {}): Promise<StateFile[] | null> => {
     const transactionFileInfo = await getCommittedTransactionFiles(cwd);
     if (!transactionFileInfo) {
         return null;
@@ -128,7 +149,21 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     });
 
     const results = await Promise.all(promises);
-    const validResults = results.filter((sf): sf is StateFile => !!sf);
+    let validResults = results.filter((sf): sf is StateFile => !!sf);
+
+    if (options.skipReverts) {
+        const revertedUuids = new Set<string>();
+        validResults.forEach(sf => {
+            const revertedUuid = getRevertedTransactionUuid(sf);
+            if (revertedUuid) {
+                revertedUuids.add(revertedUuid);
+            }
+        });
+
+        validResults = validResults.filter(sf => 
+            !isRevertTransaction(sf) && !revertedUuids.has(sf.uuid)
+        );
+    }
 
     // Sort transactions by date, most recent first
     validResults.sort(sortByDateDesc);
@@ -136,61 +171,18 @@ export const readAllStateFiles = async (cwd: string = process.cwd()): Promise<St
     return validResults;
 }
 
-export const findLatestStateFile = async (cwd: string = process.cwd()): Promise<StateFile | null> => {
-    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
-    if (!transactionFileInfo || transactionFileInfo.files.length === 0) {
-        return null;
-    }
-    const { stateDir, files: transactionFiles } = transactionFileInfo;
-    
-    // Read creation date from each file without parsing the whole thing.
-    // This is much faster than reading and parsing the full YAML for every file.
-    const filesWithDates = await Promise.all(
-        transactionFiles.map(async (file) => {
-            const filePath = path.join(stateDir, file);
-            let createdAt: Date | null = null;
-            try {
-                // Read only the first 512 bytes to find `createdAt`. This is an optimization.
-                const fileHandle = await fs.open(filePath, 'r');
-                const buffer = Buffer.alloc(512);
-                await fileHandle.read(buffer, 0, 512, 0);
-                await fileHandle.close();
-                const content = buffer.toString('utf-8');
-                // Extract date from a line like 'createdAt: 2023-01-01T00:00:00.000Z'
-                const match = content.match(/^createdAt:\s*['"]?(.+?)['"]?$/m);
-                if (match && match[1]) {
-                    createdAt = new Date(match[1]);
-                }
-            } catch (error) {
-                if (!isEnoentError(error)) {
-                  logger.debug(`Could not read partial date from ${file}: ${getErrorMessage(error)}`);
-                }
-            }
-            return { file, createdAt };
-        })
-    );
-
-    const validFiles = filesWithDates.filter(f => f.createdAt instanceof Date) as { file: string; createdAt: Date }[];
-
-    if (validFiles.length === 0) {
-        // Fallback for safety, though it should be rare.
-        const transactions = await readAllStateFiles(cwd);
-        return transactions?.[0] ?? null;
-    }
-
-    validFiles.sort((a, b) => sortByDateDesc({ createdAt: a.createdAt }, { createdAt: b.createdAt }));
-
-    const latestFile = validFiles[0];
-    if (!latestFile) {
-        return null;
-    }
-
-    // Now read the full content of only the latest file
-    return readStateFile(cwd, getUuidFromFileName(latestFile.file));
+export const findLatestStateFile = async (cwd: string = process.cwd(), options: ReadStateFilesOptions = {}): Promise<StateFile | null> => {
+    // This is a case where using readAllStateFiles is simpler and the performance
+    // difference is negligible for finding just the latest.
+    // The optimization in the original `findLatestStateFile` is complex and this simplifies logic.
+    const allFiles = await readAllStateFiles(cwd, options);
+    return allFiles?.[0] ?? null;
 };
 
-export const findStateFileByIdentifier = async (cwd: string, identifier: string): Promise<StateFile | null> => {
+export const findStateFileByIdentifier = async (cwd: string, identifier: string, options: ReadStateFilesOptions = {}): Promise<StateFile | null> => {
     if (isUUID(identifier)) {
+        // When fetching by UUID, we always return it, regardless of whether it's a revert or not.
+        // The user is being explicit.
         return readStateFile(cwd, identifier);
     }
     
@@ -199,15 +191,13 @@ export const findStateFileByIdentifier = async (cwd: string, identifier: string)
         if (isNaN(index) || index <= 0) {
             return null;
         }
-        // Optimization: use the more efficient method for the most common case.
-        if (index === 1) {
-            return findLatestStateFile(cwd);
+
+        const transactions = await readAllStateFiles(cwd, options);
+        if (transactions && transactions.length >= index) {
+            return transactions[index - 1] ?? null;
         }
-        const allTransactions = await readAllStateFiles(cwd);
-        if (!allTransactions || allTransactions.length < index) {
-            return null;
-        }
-        return allTransactions[index - 1] ?? null;
+        return null;
     }
-    return null; // Invalid identifier format
+
+    return null;
 };
