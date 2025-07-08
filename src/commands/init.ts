@@ -2,18 +2,18 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { findConfig, createConfig, ensureStateDirExists, getProjectId } from '../core/config';
 import { logger, getErrorMessage, isEnoentError } from '../utils/logger';
-import { STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME, GITIGNORE_COMMENT, CONFIG_FILE_NAME_TS } from '../utils/constants';
+import { STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME, GITIGNORE_COMMENT, CONFIG_FILE_NAME_JSON } from '../utils/constants';
 import chalk from 'chalk';
 
 const getInitMessage = (projectId: string): string => `
 ${chalk.green('✅ relaycode has been initialized for this project.')}
 
-Configuration file created: ${chalk.cyan(CONFIG_FILE_NAME_TS)}
+Configuration file created: ${chalk.cyan(CONFIG_FILE_NAME_JSON)}
 
 Project ID: ${chalk.cyan(projectId)}
 
 ${chalk.bold('Next steps:')}
-${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME_TS)} to customize settings. The config is organized into sections:
+${chalk.gray('1.')} (Optional) Open ${chalk.cyan(CONFIG_FILE_NAME_JSON)} to customize settings. The config is organized into sections:
    - In ${chalk.yellow("'watcher'")}, you can set ${chalk.yellow("'preferredStrategy'")} to control AI patch generation ('auto', 'new-unified', 'multi-search-replace', etc.).
    - In ${chalk.yellow("'git'")}, you can enable ${chalk.yellow("'git.autoGitBranch'")} to create a new branch for each transaction.
    - In ${chalk.yellow("'patch'")}, you can configure the linter, pre/post commands, and approval behavior.
@@ -61,7 +61,7 @@ You can review your configuration in your existing config file.
     
     const projectId = await getProjectId(cwd);
     await createConfig(projectId, cwd);
-    logger.success(`Created configuration file: ${chalk.cyan(CONFIG_FILE_NAME_TS)}`);
+    logger.success(`Created configuration file: ${chalk.cyan(CONFIG_FILE_NAME_JSON)}`);
     
     await ensureStateDirExists(cwd);
     logger.success(`Created state directory: ${STATE_DIRECTORY_NAME}/`);

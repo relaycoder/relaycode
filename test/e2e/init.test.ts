@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { initCommand } from '../../src/commands/init';
 import { setupE2ETest, E2ETestContext, createTestFile } from '../test.util';
-import { CONFIG_FILE_NAME_TS, CONFIG_FILE_NAME_JSON, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
+import { CONFIG_FILE_NAME_JSON, STATE_DIRECTORY_NAME, GITIGNORE_FILE_NAME } from '../../src/utils/constants';
 import { logger } from '../../src/utils/logger';
 import { findConfig, findConfigPath } from '../../src/core/config';
 
@@ -24,9 +24,9 @@ describe('e2e/init', () => {
         // Check for config file
         const configPath = await findConfigPath(context.testDir.path);
         expect(configPath).toBeTruthy();
-        expect(configPath).toBe(path.join(context.testDir.path, CONFIG_FILE_NAME_TS));
+        expect(configPath).toBe(path.join(context.testDir.path, CONFIG_FILE_NAME_JSON));
 
-        // Read config using the findConfig function to handle TypeScript files
+        // Read config using the findConfig function
         const config = await findConfig(context.testDir.path);
         expect(config).toBeTruthy();
         
@@ -85,7 +85,7 @@ describe('e2e/init', () => {
     });
 
     it('should not overwrite an existing relaycode.config.json', async () => {
-        const customConfig = { projectId: 'custom', customField: true };
+        const customConfig = { projectId: 'custom', customField: true, "$schema": "https://relay-code.dev/schema.json" };
         await createTestFile(context.testDir.path, CONFIG_FILE_NAME_JSON, JSON.stringify(customConfig));
 
         await initCommand(context.testDir.path);

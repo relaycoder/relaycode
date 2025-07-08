@@ -324,11 +324,15 @@ describe('e2e/transaction', () => {
         const postCommandFile = path.join(context.testDir.path, 'post.txt');
     
         // Use bun to create files as it's more reliable in this environment
+        // On Windows, paths in shell commands need to be escaped or use forward slashes
+        const preCommand = `bun -e "await Bun.write('${preCommandFile.replace(/\\/g, '/')}', '')"`;
+        const postCommand = `bun -e "await Bun.write('${postCommandFile.replace(/\\/g, '/')}', '')"`;
+    
         await runProcessPatch(
             context,
             {
-                preCommand: `bun -e "await Bun.write('${preCommandFile}', '')"`,
-                postCommand: `bun -e "await Bun.write('${postCommandFile}', '')"`,
+                preCommand,
+                postCommand,
             },
             [{ type: 'edit', path: testFile, content: 'new content' }]
         );

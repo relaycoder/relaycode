@@ -2,9 +2,7 @@ export const APP_NAME = 'Relaycode';
 export const COMMAND_NAME = 'relay';
 
 export const CONFIG_FILE_NAME_JSON = 'relay.config.json';
-export const CONFIG_FILE_NAME_TS = 'relay.config.ts';
-export const CONFIG_FILE_NAME_JS = 'relay.config.js';
-export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_TS, CONFIG_FILE_NAME_JS, CONFIG_FILE_NAME_JSON];
+export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_JSON];
 export const STATE_DIRECTORY_NAME = '.relay';
 export const GITIGNORE_FILE_NAME = '.gitignore';
 export const TRANSACTIONS_DIRECTORY_NAME = 'transactions';
