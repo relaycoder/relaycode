@@ -5,9 +5,18 @@ import path from 'path';
 import { exec, ExecException } from 'child_process';
 import { executeShellCommand } from '../utils/shell';
 import { FALLBACKS_DIR, WINDOWS_CLIPBOARD_EXE_NAME, WINDOWS_DIR } from '../utils/constants';
+import { fileURLToPath } from 'url';
 
 type ClipboardCallback = (content: string) => void;
 type ClipboardReader = () => Promise<string>;
+
+// Path to the directory of the current module (e.g., /path/to/relaycode/dist)
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+// Path to the root of the relaycode package
+const packageRoot = path.join(moduleDir, '..');
+// Path to the clipboard executable within the package
+const sourceExePath = path.join(packageRoot, FALLBACKS_DIR, WINDOWS_DIR, WINDOWS_CLIPBOARD_EXE_NAME);
+
 
 const checkLinuxClipboardDependencies = async () => {
   if (process.platform === 'linux') {
@@ -70,36 +79,27 @@ const createDirectWindowsClipboardReader = (): ClipboardReader => {
 const ensureClipboardExecutable = () => {
   if (process.platform === 'win32') {
     try {
-      // Try to find clipboard executables in common locations
-      const possiblePaths = [
-        // Global installation path
-        path.join(process.env.HOME || '', '.bun', 'install', 'global', 'node_modules', 'relaycode', FALLBACKS_DIR, WINDOWS_DIR),
-        // Local installation paths
-        path.join(process.cwd(), 'node_modules', 'clipboardy', FALLBACKS_DIR, WINDOWS_DIR),
-        WINDOWS_FALLBACK_DIR,
-      ];
-      
       // Create fallbacks directory in the current project if it doesn't exist
       if (!fs.existsSync(WINDOWS_FALLBACK_DIR)) {
         fs.mkdirSync(WINDOWS_FALLBACK_DIR, { recursive: true });
       }
       
-      // Find an existing executable
-      let sourceExePath = null;
-      for (const dir of possiblePaths) {
-        const exePath = path.join(dir, WINDOWS_CLIPBOARD_EXE_NAME);
-        if (fs.existsSync(exePath)) {
-          sourceExePath = exePath;
-          break;
+      if (fs.existsSync(sourceExePath)) {
+        let shouldCopy = true;
+        if (fs.existsSync(WINDOWS_CLIPBOARD_PATH)) {
+          // If the file exists, check if the size is the same.
+          // This is a simple way to check if it's the same file.
+          if (fs.statSync(sourceExePath).size === fs.statSync(WINDOWS_CLIPBOARD_PATH).size) {
+            shouldCopy = false;
+          }
         }
-      }
-      
-      // Copy the executable to the local fallbacks directory if found
-      if (sourceExePath && sourceExePath !== WINDOWS_CLIPBOARD_PATH) {
-        fs.copyFileSync(sourceExePath, WINDOWS_CLIPBOARD_PATH);
-        logger.info('Copied Windows clipboard executable to local fallbacks directory');
-      } else if (!sourceExePath) {
-        logger.error('Windows clipboard executable not found in any location');
+        
+        if (shouldCopy) {
+          fs.copyFileSync(sourceExePath, WINDOWS_CLIPBOARD_PATH);
+          logger.info('Copied Windows clipboard executable to local fallbacks directory');
+        }
+      } else {
+        logger.error(`Windows clipboard executable not found in package at: ${sourceExePath}`);
       }
     } catch (error) {
       logger.warn('Error ensuring clipboard executable: ' + getErrorMessage(error));

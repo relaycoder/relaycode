@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { build } from 'esbuild';
 import os from 'os';
 import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
 import { Config, ConfigSchema, RelayCodeConfigInput } from '../types';
 import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_TS, TRANSACTIONS_DIRECTORY_NAME } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
@@ -71,8 +72,9 @@ const loadModuleConfig = async (configPath: string): Promise<RelayCodeConfigInpu
   }
 
   try {
+    const fileURL = pathToFileURL(importPath).href;
     // Dynamically import the module. The cache-busting `?t=` is important for reloads.
-    const module: ConfigModule = await import(`${importPath}?t=${Date.now()}`);
+    const module: ConfigModule = await import(`${fileURL}?t=${Date.now()}`);
     return module.default;
   } finally {
     if (tempDir) await fs.rm(tempDir, { recursive: true, force: true });
