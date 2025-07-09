@@ -1,7 +1,24 @@
-beside rename, add move feature and shell feature... oh for rename and move add example for yaml guide. 
+####
+
+custom instruction with template {}
 
 ####
 
+CRUD Aggregating transactions data
+
+####
+
+implement konro
+
+####
+
+on multiple before git commit, there are 
+
+####
+
+beside rename, add move feature and shell feature... oh for rename and move add example for yaml guide. 
+
+####
 
 on failed roll back transaction, we should save the path operations for pruning the context
 

@@ -1,14 +1,10 @@
 import { promises as fs } from 'fs';
-import path from 'path';
 import yaml from 'js-yaml';
 import { StateFile, StateFileSchema } from '../types';
-import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX, STATE_DIRECTORY_NAME, TRANSACTIONS_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME } from '../utils/constants';
-import { logger, isEnoentError, getErrorMessage } from '../utils/logger';
+import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX } from '../utils/constants';
+import { logger, isEnoentError } from '../utils/logger';
 import { fileExists, safeRename } from '../utils/fs';
-
-const stateDirectoryCache = new Map<string, boolean>();
-
-const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
+import { ensureStateDirExists, getStateFilePath, getTransactionsDirectory, getUndoneStateFilePath } from './config';
 
 export const isRevertTransaction = (state: StateFile): boolean => {
     return state.reasoning.some(r => r.startsWith('Reverting transaction'));
@@ -27,16 +23,6 @@ export const getRevertedTransactionUuid = (state: StateFile): string | null => {
     return null;
 }
 
-export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}${PENDING_STATE_FILE_SUFFIX}` : `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME, fileName);
-};
-
-export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
-  const fileName = `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME, fileName);
-};
-
 const getUuidFromFileName = (fileName: string): string => {
   return fileName.replace(COMMITTED_STATE_FILE_SUFFIX, '');
 };
@@ -47,7 +33,7 @@ const isUUID = (str: string): boolean => {
 
 // Helper to get all committed transaction file names.
 const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
-    const transactionsDir = path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME);
+    const transactionsDir = getTransactionsDirectory(cwd);
     try {
         await fs.access(transactionsDir);
     } catch (e) {
@@ -60,15 +46,6 @@ const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: st
 
 const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string | Date }) => {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-};
-
-// Ensure state directory exists with caching for performance
-const ensureStateDirectory = async (cwd: string): Promise<void> => {
-  const dirPath = path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME);
-  if (!stateDirectoryCache.has(dirPath)) {
-    await fs.mkdir(dirPath, { recursive: true });
-    stateDirectoryCache.set(dirPath, true);
-  }
 };
 
 export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
@@ -84,11 +61,7 @@ export const writePendingState = async (cwd: string, state: StateFile): Promise<
   const validatedState = StateFileSchema.parse(state);
   const yamlString = yaml.dump(validatedState);
   const filePath = getStateFilePath(cwd, state.uuid, true);
-  
-  // Ensure directory exists (cached)
-  await ensureStateDirectory(cwd);
-  
-  // Write file
+  await ensureStateDirExists(cwd);
   await fs.writeFile(filePath, yamlString, 'utf-8');
 };
 
