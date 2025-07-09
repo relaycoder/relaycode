@@ -1,7 +1,6 @@
 // Core logic
 export { createClipboardWatcher } from './core/clipboard';
 export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit, findConfigPath, getStateFilePath, getUndoneStateFilePath } from './core/config';
-export { applyOperations, createSnapshot, restoreSnapshot } from './core/executor';
 export { parseLLMResponse } from './core/parser';
 export {
     commitState,
@@ -13,7 +12,7 @@ export {
     readAllStateFiles,
     writePendingState
 } from './core/state';
-export { processPatch } from './core/transaction';
+export { processPatch, applyOperations, createSnapshot, restoreSnapshot } from './core/transaction';
 
 // Commands
 export { initCommand } from './commands/init';

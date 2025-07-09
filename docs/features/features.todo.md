@@ -1,5 +1,9 @@
 ####
 
+beside insertion and deletion stats, also add difference
+
+####
+
 custom instruction with template {}
 
 ####

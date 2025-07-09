@@ -11,9 +11,6 @@ export const isRevertTransaction = (state: StateFile): boolean => {
 }
 
 export const getRevertedTransactionUuid = (state: StateFile): string | null => {
-    if (!isRevertTransaction(state)) {
-        return null;
-    }
     for (const r of state.reasoning) {
         const match = r.match(/^Reverting transaction ([\w-]+)\./);
         if (match && match[1]) {
