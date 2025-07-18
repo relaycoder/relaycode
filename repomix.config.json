@@ -12,7 +12,7 @@
     "removeComments": false,
     "removeEmptyLines": false,
     // "compress": true,
-    "compress": false,
+    "compress": true,
     "topFilesLength": 5,
     "showLineNumbers": false,
     "copyToClipboard": true,
@@ -22,15 +22,25 @@
     }
   },
   "include": [
-    // "src"
-    "src/core",
-    "src/commands/init.ts",
-    "src/index.ts"
+    "package.json",
+    "tsconfig.json",
+    "src"
+    // "src/core",
+    // "src/commands/init.ts",
+    // "src/index.ts"
   ],
   "ignore": {
     "useGitignore": true,
     "useDefaultPatterns": true,
     "customPatterns": [
+      // "src/utils/notifier.ts",
+      // "src/utils/shell.ts",
+      // "src/utils/prompt.ts",
+      // "src/utils/logger.ts",
+      // "src/core/clipboard.ts",
+      // "src/cli.ts"
+
+
       // ".relaycode",
       // "fallbacks",
       // ".cursor",

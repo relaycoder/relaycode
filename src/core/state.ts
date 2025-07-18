@@ -1,10 +1,9 @@
+import { StateFile } from '../types';
+import { logger } from '../utils/logger';
+import { getDb, toStateFile, fromStateFile } from './db';
 import { promises as fs } from 'fs';
-import yaml from 'js-yaml';
-import { StateFile, StateFileSchema } from '../types';
-import { COMMITTED_STATE_FILE_SUFFIX, PENDING_STATE_FILE_SUFFIX } from '../utils/constants';
-import { logger, isEnoentError } from '../utils/logger';
-import { fileExists, safeRename } from '../utils/fs';
-import { ensureStateDirExists, getStateFilePath, getTransactionsDirectory, getUndoneStateFilePath } from './config';
+import path from 'path';
+import { getStateDirectory } from './config';
 
 export const isRevertTransaction = (state: StateFile): boolean => {
     return state.reasoning.some(r => r.startsWith('Reverting transaction'));
@@ -20,25 +19,8 @@ export const getRevertedTransactionUuid = (state: StateFile): string | null => {
     return null;
 }
 
-const getUuidFromFileName = (fileName: string): string => {
-  return fileName.replace(COMMITTED_STATE_FILE_SUFFIX, '');
-};
-
 const isUUID = (str: string): boolean => {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
-};
-
-// Helper to get all committed transaction file names.
-const getCommittedTransactionFiles = async (cwd: string): Promise<{ stateDir: string; files: string[] } | null> => {
-    const transactionsDir = getTransactionsDirectory(cwd);
-    try {
-        await fs.access(transactionsDir);
-    } catch (e) {
-        return null;
-    }
-    const files = await fs.readdir(transactionsDir);
-    const transactionFiles = files.filter(f => f.endsWith(COMMITTED_STATE_FILE_SUFFIX) && !f.endsWith(PENDING_STATE_FILE_SUFFIX));
-    return { stateDir: transactionsDir, files: transactionFiles };
 };
 
 const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string | Date }) => {
@@ -46,57 +28,53 @@ const sortByDateDesc = (a: { createdAt: string | Date }, b: { createdAt: string 
 };
 
 export const hasBeenProcessed = async (cwd: string, uuid: string): Promise<boolean> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  const undonePath = getUndoneStateFilePath(cwd, uuid);
-  // Check if a transaction has been committed or undone.
-  // This allows re-processing a transaction that failed and left an orphaned .pending.yml
-  // because we don't check for `.pending.yml` files.
-  return (await fileExists(committedPath)) || (await fileExists(undonePath));
+  const db = getDb(cwd);
+  const record = await db.query().from('transactions').where({ uuid }).first();
+  // A transaction has been processed if it exists and is either committed or undone.
+  // A pending transaction has not been fully processed.
+  return !!record && (record.status === 'committed' || record.status === 'undone');
 };
 
 export const writePendingState = async (cwd: string, state: StateFile): Promise<void> => {
-  const validatedState = StateFileSchema.parse(state);
-  const yamlString = yaml.dump(validatedState);
-  const filePath = getStateFilePath(cwd, state.uuid, true);
-  await ensureStateDirExists(cwd);
-  await fs.writeFile(filePath, yamlString, 'utf-8');
+  const db = getDb(cwd);
+  const data = {
+    ...fromStateFile(state),
+    status: 'pending',
+  };
+  await db.insert('transactions', data as any);
 };
 
+export const updatePendingState = async (cwd:string, state: StateFile): Promise<void> => {
+    const db = getDb(cwd);
+    const data = fromStateFile(state);
+    const updated = await db.update('transactions').set(data as any).where({ uuid: state.uuid, status: 'pending' });
+    if (updated.length === 0) {
+        logger.warn(`Could not find pending transaction with uuid ${state.uuid} to update.`);
+    }
+}
+
 export const commitState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  await safeRename(pendingPath, committedPath);
+  const db = getDb(cwd);
+  // Also update status from 'pending' to 'committed'
+  const updated = await db.update('transactions').set({ status: 'committed' }).where({ uuid, status: 'pending' });
+  if (updated.length === 0) {
+      logger.warn(`Could not find pending transaction with uuid ${uuid} to commit.`);
+  }
 };
 
 export const deletePendingState = async (cwd: string, uuid: string): Promise<void> => {
-  const pendingPath = getStateFilePath(cwd, uuid, true);
-  try {
-    await fs.unlink(pendingPath);
-  } catch (error) {
-    if (isEnoentError(error)) {
-      // Already gone, that's fine.
-      return;
-    }
-    throw error;
+  const db = getDb(cwd);
+  // In case of rollback, we mark it as 'undone' instead of deleting.
+  const updated = await db.update('transactions').set({ status: 'undone' }).where({ uuid, status: 'pending' });
+  if (updated.length === 0) {
+    logger.debug(`Could not find pending transaction with uuid ${uuid} to mark as undone. It might have been committed or already undone.`);
   }
 };
 
 export const readStateFile = async (cwd: string, uuid: string): Promise<StateFile | null> => {
-  const committedPath = getStateFilePath(cwd, uuid, false);
-  try {
-    const fileContent = await fs.readFile(committedPath, 'utf-8');
-    const yamlContent = yaml.load(fileContent);
-    const parsed = StateFileSchema.safeParse(yamlContent);
-    if (parsed.success) {
-      return parsed.data;
-    }
-    logger.debug(`Could not parse state file ${committedPath}: ${parsed.error.message}`);
-    return null;
-  } catch (error) {
-    // Can be file not found or YAML parsing error.
-    // In any case, we can't get the state file.
-    return null;
-  }
+  const db = getDb(cwd);
+  const record = await db.query().from('transactions').where({ uuid, status: 'committed' }).first();
+  return record ? toStateFile(record) : null;
 };
 
 interface ReadStateFilesOptions {
@@ -104,29 +82,28 @@ interface ReadStateFilesOptions {
 }
 
 export const readAllStateFiles = async (cwd: string = process.cwd(), options: ReadStateFilesOptions = {}): Promise<StateFile[] | null> => {
-    const transactionFileInfo = await getCommittedTransactionFiles(cwd);
-    if (!transactionFileInfo) {
-        return null;
+    const dbDir = path.join(getStateDirectory(cwd), 'db');
+    try {
+        await fs.access(dbDir);
+    } catch {
+        return null; // DB directory does not exist, so not initialized
     }
-    const { files: transactionFiles } = transactionFileInfo;
-    
-    const promises = transactionFiles.map(async (file) => {
-        const stateFile = await readStateFile(cwd, getUuidFromFileName(file));
-        if (!stateFile) {
-            logger.warn(`Could not read or parse state file ${file}. Skipping.`);
-        }
-        return stateFile;
-    });
 
-    const results = await Promise.all(promises);
-    let validResults = results.filter((sf): sf is StateFile => !!sf);
+    const db = getDb(cwd);
+    let records = await db.query().from('transactions').where({ status: 'committed' }).all();
+    
+    if (!records) return [];
+    
+    let validResults = records.map(toStateFile);
 
     if (options.skipReverts) {
         const revertedUuids = new Set<string>();
         validResults.forEach(sf => {
-            const revertedUuid = getRevertedTransactionUuid(sf);
-            if (revertedUuid) {
-                revertedUuids.add(revertedUuid);
+            if (isRevertTransaction(sf)) {
+                const revertedUuid = getRevertedTransactionUuid(sf);
+                if (revertedUuid) {
+                    revertedUuids.add(revertedUuid);
+                }
             }
         });
 
@@ -142,18 +119,16 @@ export const readAllStateFiles = async (cwd: string = process.cwd(), options: Re
 }
 
 export const findLatestStateFile = async (cwd: string = process.cwd(), options: ReadStateFilesOptions = {}): Promise<StateFile | null> => {
-    // This is a case where using readAllStateFiles is simpler and the performance
-    // difference is negligible for finding just the latest.
-    // The optimization in the original `findLatestStateFile` is complex and this simplifies logic.
     const allFiles = await readAllStateFiles(cwd, options);
     return allFiles?.[0] ?? null;
 };
 
 export const findStateFileByIdentifier = async (cwd: string, identifier: string, options: ReadStateFilesOptions = {}): Promise<StateFile | null> => {
     if (isUUID(identifier)) {
-        // When fetching by UUID, we always return it, regardless of whether it's a revert or not.
-        // The user is being explicit.
-        return readStateFile(cwd, identifier);
+        // When fetching by UUID, we always return it if committed, regardless of whether it's a revert or not.
+        const db = getDb(cwd);
+        const record = await db.query().from('transactions').where({ uuid: identifier, status: 'committed' }).first();
+        return record ? toStateFile(record) : null;
     }
     
     if (/^-?\d+$/.test(identifier)) {

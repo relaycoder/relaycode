@@ -6,7 +6,7 @@ import { deleteFile, readFileContent, removeEmptyParentDirectories, renameFile, 
 import path from 'path';
 import chalk from 'chalk';
 
-import { hasBeenProcessed, writePendingState, commitState, deletePendingState } from './state';
+import { hasBeenProcessed, writePendingState, commitState, deletePendingState, updatePendingState } from './state';
 import { getConfirmation } from '../utils/prompt'
 import { requestApprovalWithNotification, notifyFailure, notifySuccess, notifyPatchDetected, notifyRollbackFailure } from '../utils/notifier';
 
@@ -426,7 +426,7 @@ export const processPatch = async (config: Config, parsedResponse: ParsedLLMResp
             stateFile.approved = true;
             (stateFile as any).linesAdded = totalAdded;
             (stateFile as any).linesRemoved = totalRemoved;
-            await writePendingState(cwd, stateFile); // Update state with approved: true before commit
+            await updatePendingState(cwd, stateFile); // Update state with approval and stats before commit
             await commitState(cwd, uuid);
             logCompletionSummary(uuid, startTime, operations);
             notifySuccess(uuid, config.core.enableNotifications);

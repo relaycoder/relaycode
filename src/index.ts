@@ -1,6 +1,6 @@
 // Core logic
 export { createClipboardWatcher } from './core/clipboard';
-export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit, findConfigPath, getStateFilePath, getUndoneStateFilePath } from './core/config';
+export { findConfig, createConfig, getProjectId, ensureStateDirExists, loadConfigOrExit, findConfigPath } from './core/config';
 export { parseLLMResponse } from './core/parser';
 export {
     commitState,

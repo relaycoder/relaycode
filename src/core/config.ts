@@ -2,7 +2,7 @@ import { z } from 'zod';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { Config, ConfigSchema } from '../types';
-import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, TRANSACTIONS_DIRECTORY_NAME, UNDONE_DIRECTORY_NAME, CONFIG_FILE_NAME_JSON, PENDING_STATE_FILE_SUFFIX, COMMITTED_STATE_FILE_SUFFIX } from '../utils/constants';
+import { CONFIG_FILE_NAMES, STATE_DIRECTORY_NAME, CONFIG_FILE_NAME_JSON } from '../utils/constants';
 import { logger, isEnoentError } from '../utils/logger';
 import chalk from 'chalk';
 
@@ -54,34 +54,25 @@ export const loadConfigOrExit = async (cwd: string = process.cwd()): Promise<Con
 const stateDirectoryCache = new Map<string, boolean>();
 
 export const getStateDirectory = (cwd: string) => path.resolve(cwd, STATE_DIRECTORY_NAME);
-export const getTransactionsDirectory = (cwd: string) => path.join(getStateDirectory(cwd), TRANSACTIONS_DIRECTORY_NAME);
-export const getUndoneDirectory = (cwd: string) => path.join(getTransactionsDirectory(cwd), UNDONE_DIRECTORY_NAME);
-
-export const getStateFilePath = (cwd: string, uuid: string, isPending: boolean): string => {
-  const fileName = isPending ? `${uuid}${PENDING_STATE_FILE_SUFFIX}` : `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getTransactionsDirectory(cwd), fileName);
-};
-
-export const getUndoneStateFilePath = (cwd: string, uuid: string): string => {
-  const fileName = `${uuid}${COMMITTED_STATE_FILE_SUFFIX}`;
-  return path.join(getUndoneDirectory(cwd), fileName);
-};
 
 export const ensureStateDirExists = async (cwd: string = process.cwd()): Promise<void> => {
-  const undoneDirPath = getUndoneDirectory(cwd);
-  if (!stateDirectoryCache.has(undoneDirPath)) {
-    await fs.mkdir(undoneDirPath, { recursive: true });
-    stateDirectoryCache.set(undoneDirPath, true);
+  const stateDirPath = getStateDirectory(cwd);
+  if (!stateDirectoryCache.has(stateDirPath)) {
+    await fs.mkdir(stateDirPath, { recursive: true });
+    stateDirectoryCache.set(stateDirPath, true);
   }
 };
 
-export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {  
+export const createConfig = async (projectId: string, cwd: string = process.cwd()): Promise<Config> => {
+  
   const defaultConfig = ConfigSchema.parse({ projectId });
-  const configContent = {
+
+  const configContent = {
     $schema: "https://relay-code.dev/schema.json",
     ...defaultConfig
   };
-  const configPath = path.join(cwd, CONFIG_FILE_NAME_JSON);
+
+  const configPath = path.join(cwd, CONFIG_FILE_NAME_JSON);
   await fs.writeFile(configPath, JSON.stringify(configContent, null, 2));
 
   return configContent;
